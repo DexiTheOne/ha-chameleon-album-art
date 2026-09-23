@@ -1,0 +1,47 @@
+# Chameleon with Album Art
+
+A Home Assistant custom integration that applies colors from images or a media player's current album artwork to RGB lights. This project is based on [Chameleon by MKSG-MugunthKumar](https://github.com/MKSG-MugunthKumar/ha-chameleon).
+
+## Features
+
+- Extract a palette from images in `/config/www/chameleon/` and distribute it across selected lights.
+- Select **Album Art** as the Chameleon light effect to use the configured media player's current artwork.
+- Refresh album art colors when the media player's artwork changes while that effect is active.
+- Choose static colors or animated transitions with the companion transition controls.
+
+Album artwork is kept in memory and is limited to 10 MB per download. If artwork is unavailable, the last successfully applied light colors remain in place and the Chameleon light reports `last_error`.
+
+## Install with HACS
+
+This repository is intended to be added to HACS as a **custom Integration repository** after it is published:
+
+1. Remove the existing HACS Chameleon repository entry or download so only one source manages `custom_components/chameleon`. Keep the Chameleon integration configuration entry until the replacement is installed.
+2. In HACS, open **Custom repositories** and add this repository's URL as an **Integration**.
+3. Download Chameleon from HACS and restart Home Assistant.
+4. In **Settings → Devices & services → Chameleon**, open **Configure** and select an **Album Art Media Player**.
+5. Turn on the Chameleon light and choose its **Album Art** effect. Change tracks to verify that the light colors update.
+
+HACS installs `custom_components/chameleon` directly from this repository; no file copying, extra package, or separate card is required. The existing configuration entry should remain available because the integration domain is still `chameleon`. Back up Home Assistant before switching sources, and check the configuration entry and entities after restart.
+
+For manual installation, copy `custom_components/chameleon` into `/config/custom_components/` and restart Home Assistant.
+
+## Use
+
+Add scenes by placing `.jpg`, `.jpeg`, or `.png` files in `/config/www/chameleon/`. Call `chameleon.refresh_scenes` after changing files. The Chameleon light's effect list contains these scenes, **Random**, and **Album Art** when a media player is configured.
+
+A transition of `0` applies a static palette. A value above `0` animates through the palette. The Chameleon light supports native Home Assistant brightness and effect controls; `number.chameleon_*_transition` and `select.chameleon_*_transition_style` control animation.
+
+The Album Art effect reads the selected media player's `entity_picture`. It supports HTTP(S) artwork URLs and Home Assistant relative URLs. It applies colors in the configured light order and updates when `entity_picture` changes. The effect does not react to audio beats or waveform data.
+
+## Development
+
+The repository root contains `hacs.json` and one integration under `custom_components/chameleon`, following [HACS's integration repository layout](https://www.hacs.xyz/docs/publish/integration/). Tests are in `tests/`. Run them with a Python environment containing the `test` dependencies from `pyproject.toml`:
+
+```sh
+python -m pip install -e '.[test]'
+python -m pytest -q
+```
+
+## Credits
+
+Based on [upstream Chameleon](https://github.com/MKSG-MugunthKumar/ha-chameleon) by MKSG-MugunthKumar. Album art support and this standalone repository layout were developed for this fork.

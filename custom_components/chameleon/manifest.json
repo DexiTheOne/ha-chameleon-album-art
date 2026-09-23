@@ -1,0 +1,17 @@
+{
+  "domain": "chameleon",
+  "name": "Chameleon",
+  "codeowners": [
+    "@DexiTheOne"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/DexiTheOne/ha-chameleon-album-art",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/DexiTheOne/ha-chameleon-album-art/issues",
+  "requirements": [
+    "colorthief==0.2.1",
+    "Pillow>=10.0.0"
+  ],
+  "version": "3.0.0+albumart.1"
+}

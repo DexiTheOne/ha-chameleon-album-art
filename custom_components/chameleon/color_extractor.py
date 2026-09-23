@@ -26,9 +26,33 @@ def clamp_rgb_color(color: RGBColor) -> RGBColor:
     )
 
 
+def _normalize_color(color: RGBColor) -> RGBColor:
+    """Normalize one extracted color."""
+    return clamp_rgb_color(color)
+
+
 def _normalize_palette(colors: list[RGBColor]) -> list[RGBColor]:
     """Normalize every color in a palette."""
     return [clamp_rgb_color(color) for color in colors]
+
+
+def select_interesting_colors(colors: list[RGBColor]) -> list[RGBColor]:
+    """Keep vivid, visible source swatches in their original dominance order.
+
+    Score each normalized swatch before any brightness enhancement: a dark or
+    nearly neutral swatch cannot gain an artificial hue from that enhancement.
+    """
+    result: list[RGBColor] = []
+    for color in colors:
+        r, g, b = clamp_rgb_color(color)
+        _hue, saturation, value = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+        if value < 0.18 or saturation < 0.28:
+            continue
+        # Very pale pastels and highlights wash out on LEDs.
+        if value > 0.94 and saturation < 0.38:
+            continue
+        result.append((r, g, b))
+    return result
 
 
 def normalize_palette_brightness(colors: list[RGBColor]) -> list[RGBColor]:

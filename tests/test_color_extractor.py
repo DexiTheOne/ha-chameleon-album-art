@@ -12,6 +12,7 @@ from custom_components.chameleon.color_extractor import (
     _normalize_palette,
     clamp_rgb_color,
     normalize_palette_brightness,
+    select_interesting_colors,
     extract_color_palette_bytes,
     generate_gradient_path,
     rgb_to_hs,
@@ -191,3 +192,10 @@ class TestRgbToHs:
         hue, sat = rgb_to_hs((255, 128, 128))
         assert hue == pytest.approx(0, abs=1)  # Still red hue
         assert 40 < sat < 60  # Approximately 50% saturation
+
+
+def test_interesting_colors_reject_neutrals_dark_and_pale_swatches():
+    colors = [(255, 255, 255), (0, 0, 0), (35, 12, 12),
+              (180, 178, 170), (255, 220, 220), (210, 40, 90), (35, 100, 170)]
+    assert select_interesting_colors(colors) == [(210, 40, 90), (35, 100, 170)]
+    assert select_interesting_colors([(255, 255, 255)]) == []

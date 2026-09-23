@@ -1,4 +1,4 @@
-"""Light ordering for Random-scene palette assignment."""
+"""Light ordering for randomized scene and album-art palette assignment."""
 
 from __future__ import annotations
 

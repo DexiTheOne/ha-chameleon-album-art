@@ -21,12 +21,16 @@ CONF_LIGHT_ENTITIES: Final = "light_entities"  # New: list of light entities
 CONF_MEDIA_PLAYER_ENTITY: Final = "media_player_entity"
 CONF_NORMALIZE_BRIGHTNESS: Final = "normalize_brightness"
 DEFAULT_NORMALIZE_BRIGHTNESS: Final = False
+CONF_INTERESTING_COLORS: Final = "interesting_colors"
+DEFAULT_INTERESTING_COLORS: Final = False
 CONF_RANDOMIZE_COLOR_ASSIGNMENT: Final = "randomize_color_assignment"
 DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT: Final = False
 CONF_TRANSITION: Final = "transition"
+CONF_ANIMATION_ENABLED: Final = "animation_enabled"
+DEFAULT_ANIMATION_ENABLED: Final = True
 
 # Light hosts scene effects, select the transition style, number the transition
-# duration, and switch the Random-scene color assignment control.
+# duration, and switches animation and Random-scene color assignment.
 PLATFORMS: Final = ["light", "select", "number", "switch"]
 
 # Services
@@ -52,7 +56,7 @@ DEFAULT_QUALITY: Final = 10  # Color extraction quality (1 = highest, 10 = faste
 
 # Animation transition
 # A "transition" is the seconds-long fade duration between successive scene
-# colors. Transition of 0 means "static" — apply the scene once with no
+# colors. Transition of 0 applies a scene immediately and stops the
 # animation loop. Range chosen for usable slider precision: 100 positions over
 # 0-10s with 0.1s step. 10s is enough for most ambient-lighting use cases.
 MIN_TRANSITION: Final = 0

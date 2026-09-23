@@ -12,7 +12,7 @@
         },
         "data_description": {
           "light_entities": "The RGB lights to control with scene colors. Each light will receive a unique color from the image palette.",
-          "transition": "Fade duration in seconds between colors. Set to 0 to disable animation (static scenes only).",
+          "transition": "Fade duration in seconds for scene changes and, when enabled, continuous animation. Set to 0 for immediate changes.",
           "media_player_entity": "Optional media player whose current album artwork is used by the Album Art effect.",
           "normalize_brightness": "Adjust extracted RGB colors for bright, vibrant LED output. This does not change the light brightness setting."
         }
@@ -45,6 +45,12 @@
     "switch": {
       "randomize_color_assignment": {
         "name": "Randomize Color Assignment"
+      },
+      "animation": {
+        "name": "Animation"
+      },
+      "interesting_colors": {
+        "name": "Only Interesting Colors"
       }
     },
     "select": {

@@ -3,8 +3,8 @@
 Brightness is owned by the light entity (since light entities have native
 brightness support). This platform only exposes the transition slider.
 
-Semantic zero-value: ``transition == 0`` → static mode. Any running animation
-is stopped and the current scene is re-applied as a static color or palette.
+A zero transition applies colors immediately and stops any running animation.
+Continuous animation is controlled separately by the Animation switch.
 
 Live updates: while an animation is running, slider drags push the new value
 into the running controller without restarting it.
@@ -74,7 +74,7 @@ def _get_animation_manager(hass: HomeAssistant) -> AnimationManager | None:
 
 
 class ChameleonTransitionNumber(NumberEntity):
-    """Transition slider. Value of 0 = static (no animation loop)."""
+    """Transition slider. Value of 0 applies colors without a fade."""
 
     _attr_has_entity_name = True
     _attr_translation_key = "transition"
@@ -127,7 +127,7 @@ class ChameleonTransitionNumber(NumberEntity):
         """Handle a slider change.
 
         - 0 → stop animation; re-apply current scene as static.
-        - 0 → >0 → re-apply current scene with animation enabled.
+        - 0 → >0 → re-apply current scene using the new fade duration.
         - >0 → >0 → push live transition update to the running controller.
         """
         new_value = round(float(value), 1)
@@ -148,7 +148,7 @@ class ChameleonTransitionNumber(NumberEntity):
 
         crossed_zero_boundary = (previous == 0) != (new_value == 0)
         if crossed_zero_boundary:
-            # Switch between static and animated: full re-apply.
+            # The scene needs a fresh apply when crossing zero.
             await self._reapply_current_scene()
         else:
             # Same mode: live-update the running controller (no-op if not running).

@@ -67,17 +67,17 @@ class ApplyColorsResult:
     @property
     def all_succeeded(self) -> bool:
         """Return True if all lights succeeded."""
-        return all(r.success for r in self.results)
+        return bool(self.results) and all(r.success for r in self.results)
 
     @property
     def all_failed(self) -> bool:
         """Return True if all lights failed."""
-        return all(not r.success for r in self.results)
+        return bool(self.results) and all(not r.success for r in self.results)
 
     @property
     def partial_failure(self) -> bool:
         """Return True if some lights failed but not all."""
-        return not self.all_succeeded and not self.all_failed
+        return bool(self.results) and not self.all_succeeded and not self.all_failed
 
     @property
     def succeeded_count(self) -> int:

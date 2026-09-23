@@ -64,6 +64,7 @@ class TestChameleonConfigFlow:
         assert result["errors"] == {}
         fields = {key.schema for key in result["data_schema"].schema}
         assert CONF_RANDOMIZE_COLOR_ASSIGNMENT not in fields
+        assert "interesting_colors" not in fields
 
     @pytest.mark.asyncio
     async def test_create_entry_single_light(self, hass: MagicMock):
@@ -166,6 +167,8 @@ class TestChameleonOptionsFlow:
         assert result["data"] == {
             CONF_MEDIA_PLAYER_ENTITY: "media_player.eversolo_dmp_a6",
             CONF_RANDOMIZE_COLOR_ASSIGNMENT: True,
+            "interesting_colors": False,
+            "animation_enabled": True,
         }
 
     @pytest.mark.asyncio
@@ -177,7 +180,20 @@ class TestChameleonOptionsFlow:
         flow.config_entry = MagicMock(options={CONF_RANDOMIZE_COLOR_ASSIGNMENT: True}, data={})
         result = await flow.async_step_init({CONF_NORMALIZE_BRIGHTNESS: True})
 
-        assert result["data"] == {CONF_NORMALIZE_BRIGHTNESS: True, CONF_RANDOMIZE_COLOR_ASSIGNMENT: True}
+        assert result["data"] == {CONF_NORMALIZE_BRIGHTNESS: True, CONF_RANDOMIZE_COLOR_ASSIGNMENT: True, "interesting_colors": False, "animation_enabled": True}
+
+    @pytest.mark.asyncio
+    async def test_interesting_colors_option_survives_configure(self):
+        """The device switch setting survives an unrelated Configure change."""
+        from custom_components.chameleon.config_flow import ChameleonOptionsFlow
+
+        flow = ChameleonOptionsFlow()
+        flow.config_entry = MagicMock(
+            options={CONF_RANDOMIZE_COLOR_ASSIGNMENT: True, "interesting_colors": True}, data={}
+        )
+        result = await flow.async_step_init({CONF_NORMALIZE_BRIGHTNESS: True})
+        assert result["data"]["interesting_colors"] is True
+        assert result["data"]["animation_enabled"] is True
 
     @pytest.mark.asyncio
     async def test_randomize_color_assignment_is_not_in_options_form(self):
@@ -190,3 +206,4 @@ class TestChameleonOptionsFlow:
 
         fields = {key.schema for key in result["data_schema"].schema}
         assert CONF_RANDOMIZE_COLOR_ASSIGNMENT not in fields
+        assert "interesting_colors" not in fields

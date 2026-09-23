@@ -1,5 +1,46 @@
 # Chameleon change log
 
+## 2026-09-23 — Only Interesting Colors control
+
+- Request: add a device control that selects vivid colors from album art and image scenes.
+- Affected objects: new `switch.chameleon_*_interesting_colors` on each Chameleon device and both extracted palette paths. Existing config entries, light IDs, scene names, and light order are preserved.
+- Implementation: the switch defaults off and saves its state in config entry options. After RGB channel normalization, HSV thresholds reject near neutral, very dark, and pale highlight swatches in their existing dominance order. Filtering runs before optional Normalize Brightness. A scene or artwork with no surviving colors leaves the current lights unchanged and reports an error. Single-light image scenes use a palette while the switch is on so a dull dominant color can be skipped. Manual colors are unaffected.
+- Validation: Python compilation, translation JSON parsing, and whitespace checks passed. The local Python environments lack pytest, so automated tests could not run; live deployment remains to be verified.
+- Rollback: turn off the switch to restore the original palette selection; reinstall the prior integration revision to remove the control.
+
+
+## 2026-09-23 — Separate animation from transition time
+
+- Request: add an Animation toggle so nonzero transition time can fade between scenes and album-art palettes without ongoing color cycling.
+- Affected objects: new `switch.chameleon_*_animation` on each Chameleon device; transition number, scene effect, and Album Art behavior. Existing scene and light entity IDs and configured light order are preserved.
+- Implementation: Animation defaults on for existing entries to preserve prior behavior and is stored in config-entry options when changed. With Animation off, each palette is applied using the transition number as a single Home Assistant light fade. Valid artwork updates use the same fade. The animation manager remains stopped afterward. The toggle re-applies the active scene when changed.
+- Validation: Python compilation, translation JSON parsing, and Git whitespace checks passed. The focused pytest suite could not run because pytest is absent from the local Python environment. No live Home Assistant deployment or entity readback was performed; a Home Assistant MCP connection is not available in this task.
+- Limits and rollback: physical bulbs may implement fade timing differently. Reinstall the previous integration revision to restore the former behavior; existing options and entity IDs remain intact.
+
+## 2026-09-23 — Randomize Album Art color assignment on updates
+
+- Request: when Randomize Color Assignment is on, assign Album Art palette colors to lights in a new random order each time valid artwork updates.
+- Implementation: Album Art now uses the existing non-repeating shuffle helper after a valid cover has been downloaded and its palette extracted. Static application and animated starting positions use the same order. A transition or style reapply retains the current order; missing/default artwork leaves it unchanged. With the switch off, Album Art uses the configured light order.
+- Affected objects: Chameleon Album Art effect and its existing Randomize Color Assignment switch. Config entries and light entity IDs are unchanged.
+- Validation: Python compilation and diff checks. The configured live artwork source is Squeezebox Boom, currently off, and the local code has not been deployed; a live album update was not tested. Pytest is unavailable in this workspace.
+- Rollback: restore the prior integration revision to make Album Art use configured light order regardless of the switch.
+
+## 2026-09-23 — Apply new artwork colors immediately
+
+- Request: show each valid new cover's colors immediately and leave the prior colors alone when artwork disappears or becomes a default image.
+- Implementation: on a valid artwork change, Chameleon now sends the new palette to the lights before restarting an enabled animation. This removes the animation's initial stagger delay and slow first fade from the cover-change response. Missing pictures, inactive media-player states, and recognizable placeholder paths skip extraction and light commands. For the Eversolo integration, the source coordinator distinguishes an explicit `albumArt`/Spotify icon from the song-ID fallback that may serve default art; Chameleon ignores that fallback. The Album Art effect remains selected so a later real cover can update it.
+- Affected objects: Chameleon Album Art effect only; no entity IDs, configured lights, or media-player options changed.
+- Validation: local Python compilation and diff checks. Live readback found Chameleon's artwork source still set to Squeezebox Boom, which is currently off, while the DMP-A6 entities are `media_player.eversolo_dmp_a6` and `media_player.eversolo_music_player`. The latter is unavailable. The DMP-A6 integration's `media_image_url` returns direct `albumArt` for internal playback when available, then falls back to a song-ID image URL. Home Assistant recorder omits `entity_picture`, so recorded states cannot establish whether past tracks had art. No real-cover transition was tested; the code has not been deployed. Automated tests remain unavailable because pytest is not installed in this workspace.
+- Limits and rollback: Eversolo artwork available only through its song-ID fallback is skipped, even if that fallback sometimes returns a real cover. Other players with opaque proxy URLs and no explicit placeholder signal may still supply a default image. Restore the previous integration revision to revert this behavior.
+
+## 2026-09-23 — Keep Album Art selected and exclude it from Random
+
+- Request: make Album Art stay active until manually changed, keep it out of Random, and investigate intermittent skipped selections.
+- Cause and implementation: Album Art was recorded as the active effect only after artwork download, extraction, and light application succeeded. A temporary missing picture or download failure therefore left the prior effect active, allowing its animation to continue. Reapplying the same artwork also returned early, so transition/style changes could leave no active animation. Album Art selection now stops the prior animation, records the effect immediately, and forces a fresh apply. Later artwork changes retry while Album Art remains selected. Choosing another effect deactivates Album Art immediately. Random excludes reserved effects, and reserved names are excluded from the image scene scan. The Off effect path also avoids acquiring the same lock twice.
+- Affected objects: Chameleon light effect selection and image scene cache. Existing config entries, entity IDs, and light order are unchanged.
+- Validation: Python compilation and Git diff checks completed. The live Chameleon light was read back as off, with Album Art in its effect list and the configured source `media_player.squeezebox_boom`. That player was also off and had no current `entity_picture`, which explains why selecting Album Art at that moment cannot produce new colors. Recent Home Assistant system/error logs showed no Chameleon runtime exception; the only matching warning was the standard custom-integration loader notice. Automated tests could not run because pytest is not installed in this workspace. The new code was not deployed, so live behavior after this change remains unverified.
+- Limits and rollback: an unavailable or invalid artwork source still cannot provide new colors; the last applied colors stay in place and `last_error` reports the cause. Revert this commit or reinstall the prior integration version to restore previous behavior.
+
 ## 2026-09-23 — Move Random assignment toggle into device controls
 
 - Request: show Randomize Color Assignment as a control entity instead of a setting in Configure.

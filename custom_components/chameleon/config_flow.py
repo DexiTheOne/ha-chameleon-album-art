@@ -17,12 +17,16 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    CONF_ANIMATION_ENABLED,
     CONF_LIGHT_ENTITIES,
+    CONF_INTERESTING_COLORS,
     CONF_MEDIA_PLAYER_ENTITY,
     CONF_NORMALIZE_BRIGHTNESS,
     CONF_RANDOMIZE_COLOR_ASSIGNMENT,
     CONF_TRANSITION,
+    DEFAULT_ANIMATION_ENABLED,
     DEFAULT_NORMALIZE_BRIGHTNESS,
+    DEFAULT_INTERESTING_COLORS,
     DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT,
     DEFAULT_TRANSITION,
     DOMAIN,
@@ -100,6 +104,14 @@ class ChameleonOptionsFlow(OptionsFlowWithReload):
             # The assignment switch owns this option. Keep it when the user
             # changes media-player or brightness settings through this flow.
             options = dict(user_input)
+            options[CONF_ANIMATION_ENABLED] = self.config_entry.options.get(
+                CONF_ANIMATION_ENABLED,
+                self.config_entry.data.get(CONF_ANIMATION_ENABLED, DEFAULT_ANIMATION_ENABLED),
+            )
+            options[CONF_INTERESTING_COLORS] = self.config_entry.options.get(
+                CONF_INTERESTING_COLORS,
+                self.config_entry.data.get(CONF_INTERESTING_COLORS, DEFAULT_INTERESTING_COLORS),
+            )
             options[CONF_RANDOMIZE_COLOR_ASSIGNMENT] = self.config_entry.options.get(
                 CONF_RANDOMIZE_COLOR_ASSIGNMENT,
                 self.config_entry.data.get(CONF_RANDOMIZE_COLOR_ASSIGNMENT, DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT),

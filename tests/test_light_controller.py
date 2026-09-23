@@ -268,3 +268,13 @@ class TestLightController:
         assert result.partial_failure is True
         assert result.succeeded_count == 1
         assert result.failed_count == 1
+
+
+def test_empty_apply_result_is_neither_success_nor_failure():
+    """A rejected palette must not be reported as an applied scene."""
+    from custom_components.chameleon.light_controller import ApplyColorsResult
+
+    result = ApplyColorsResult()
+    assert not result.all_succeeded
+    assert not result.all_failed
+    assert not result.partial_failure

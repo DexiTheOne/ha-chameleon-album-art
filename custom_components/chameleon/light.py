@@ -30,6 +30,7 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
+from urllib.parse import urlsplit
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
@@ -41,6 +42,7 @@ from homeassistant.components.light import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
@@ -55,17 +57,22 @@ from .color_extractor import (
     extract_dominant_color,
     generate_gradient_path,
     normalize_palette_brightness,
+    select_interesting_colors,
 )
 from .const import (
+    CONF_ANIMATION_ENABLED,
     CONF_LIGHT_ENTITIES,
     CONF_LIGHT_ENTITY,
     CONF_MEDIA_PLAYER_ENTITY,
     CONF_NORMALIZE_BRIGHTNESS,
+    CONF_INTERESTING_COLORS,
     CONF_RANDOMIZE_COLOR_ASSIGNMENT,
     CONF_TRANSITION,
+    DEFAULT_ANIMATION_ENABLED,
     DEFAULT_BRIGHTNESS,
     DEFAULT_COLOR_COUNT,
     DEFAULT_NORMALIZE_BRIGHTNESS,
+    DEFAULT_INTERESTING_COLORS,
     DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT,
     DEFAULT_TRANSITION,
     DEFAULT_TRANSITION_STYLE,
@@ -87,6 +94,17 @@ _LOGGER = logging.getLogger(__name__)
 
 # Default RGB shown when no scene has been applied yet (white).
 _DEFAULT_RGB: RGBColor = (255, 255, 255)
+_PLACEHOLDER_ART_NAMES = {
+    "default", "default.jpg", "default.png", "no-art", "no-art.jpg",
+    "no-cover.jpg", "no-cover.png", "placeholder.jpg", "placeholder.png",
+    "unknown-album.jpg", "unknown-album.png",
+}
+
+
+def _is_placeholder_art(entity_picture: str) -> bool:
+    """Recognize explicit placeholder paths without inspecting token-bearing queries."""
+    path = urlsplit(entity_picture).path.lower().rstrip("/")
+    return path.startswith("/static/icons/") or path.rsplit("/", 1)[-1] in _PLACEHOLDER_ART_NAMES
 
 
 async def async_setup_entry(
@@ -109,13 +127,16 @@ async def async_setup_entry(
         CONF_NORMALIZE_BRIGHTNESS,
         entry.data.get(CONF_NORMALIZE_BRIGHTNESS, DEFAULT_NORMALIZE_BRIGHTNESS),
     )
+    interesting_colors = entry.options.get(
+        CONF_INTERESTING_COLORS, entry.data.get(CONF_INTERESTING_COLORS, DEFAULT_INTERESTING_COLORS)
+    )
     randomize_color_assignment = entry.options.get(
         CONF_RANDOMIZE_COLOR_ASSIGNMENT,
         entry.data.get(CONF_RANDOMIZE_COLOR_ASSIGNMENT, DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT),
     )
 
     async_add_entities(
-        [ChameleonLight(hass, entry, light_entities, initial_transition, media_player_entity, normalize_brightness, randomize_color_assignment)],
+        [ChameleonLight(hass, entry, light_entities, initial_transition, media_player_entity, normalize_brightness, randomize_color_assignment, interesting_colors)],
         True,
     )
 
@@ -154,14 +175,19 @@ class ChameleonLight(LightEntity):
         media_player_entity: str | None = None,
         normalize_brightness: bool = DEFAULT_NORMALIZE_BRIGHTNESS,
         randomize_color_assignment: bool = DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT,
+        interesting_colors: bool = DEFAULT_INTERESTING_COLORS,
     ) -> None:
         """Initialize the Chameleon light entity."""
         self.hass = hass
         self._entry = entry
         self._light_entities = light_entities
         self._initial_transition = initial_transition
+        self._animation_enabled = entry.options.get(
+            CONF_ANIMATION_ENABLED, entry.data.get(CONF_ANIMATION_ENABLED, DEFAULT_ANIMATION_ENABLED)
+        )
         self._media_player_entity = media_player_entity
         self._normalize_brightness = normalize_brightness
+        self._interesting_colors = interesting_colors
         self._randomize_color_assignment = randomize_color_assignment
         self._random_assignment_order: list[str] | None = None
         self._remove_media_listener: Callable[[], None] | None = None
@@ -212,9 +238,40 @@ class ChameleonLight(LightEntity):
 
     def _prepare_palette(self, colors: list[RGBColor]) -> list[RGBColor]:
         """Adjust source-image RGB values before static or animated output."""
+        if self._interesting_colors:
+            colors = select_interesting_colors(colors)
         if self._normalize_brightness:
             return normalize_palette_brightness(colors)
         return colors
+
+    def set_interesting_colors(self, enabled: bool) -> None:
+        """Use the selected filter for the next image or artwork palette."""
+        self._interesting_colors = enabled
+        self.async_write_ha_state()
+
+    def _source_has_real_artwork(self) -> bool:
+        """Reject Eversolo's song-ID fallback, which can serve default art."""
+        registry_entry = er.async_get(self.hass).async_get(self._media_player_entity)
+        if registry_entry is None or registry_entry.platform != "eversolo":
+            return True
+
+        coordinator = self.hass.data.get("eversolo", {}).get(registry_entry.config_entry_id)
+        data = getattr(coordinator, "data", None)
+        if not isinstance(data, dict):
+            return False
+        music = data.get("music_control_state") or {}
+        play_type = music.get("playType")
+        if play_type == 5:  # Internal player; song-ID fallback can be a default cover.
+            return bool((music.get("playingMusic") or {}).get("albumArt"))
+        if play_type == 6:  # Spotify Connect exposes a direct cover icon.
+            return bool((music.get("everSoloPlayInfo") or {}).get("icon"))
+        return False
+
+    async def async_set_animation_enabled(self, enabled: bool) -> None:
+        """Change continuous animation without changing the fade duration."""
+        self._animation_enabled = enabled
+        await self.async_reapply_current_scene()
+        self.async_write_ha_state()
 
     def set_randomize_color_assignment(self, enabled: bool) -> None:
         """Apply a control-switch change to the next Random selection."""
@@ -310,6 +367,7 @@ class ChameleonLight(LightEntity):
             "light_count": len(self._light_entities),
             "applied_colors": self._applied_colors,
             "is_animating": manager.is_running(self._entry.entry_id) if manager else False,
+            "animation_enabled": self._animation_enabled,
             "normalize_brightness": self._normalize_brightness,
             "randomize_color_assignment": self._randomize_color_assignment,
         }
@@ -380,10 +438,17 @@ class ChameleonLight(LightEntity):
 
         if effect is not None:
             # Scene change — full re-apply.
+            if effect == SCENE_OFF:
+                await self._do_turn_off()
+                return
+            if self._effect == SCENE_ALBUM_ART and effect != SCENE_ALBUM_ART:
+                self._effect = None
             self._manual_color = None
             await self._apply_effect(effect)
         elif rgb_color is not None:
             # Manual color override — full re-apply.
+            if self._effect == SCENE_ALBUM_ART:
+                self._effect = None
             await self._apply_manual_color(tuple(rgb_color))
         elif not self._is_on:
             # Bare turn_on from off → restore last effect (Random if never set).
@@ -481,7 +546,7 @@ class ChameleonLight(LightEntity):
         and on entity add. Also called internally on cache miss.
         """
         new_options, new_scene_to_path = await self.hass.async_add_executor_job(self._scan_image_directory)
-        if new_options != self._cached_options:
+        if new_options != self._cached_options or new_scene_to_path != self._scene_to_path:
             self._cached_options = new_options
             self._scene_to_path = new_scene_to_path
             self.async_write_ha_state()
@@ -492,20 +557,31 @@ class ChameleonLight(LightEntity):
         """Apply a scene effect by name (handles Random and Off specially)."""
         # "Off" via the service path is equivalent to turn_off.
         if effect == SCENE_OFF:
-            await self.async_turn_off()
+            await self._do_turn_off()
             return
 
         if effect == SCENE_ALBUM_ART:
-            await self._apply_album_art()
+            # Selecting Album Art is a state change even if artwork is temporarily
+            # unavailable. Stop the old scene and keep listening for new artwork.
+            manager = self._get_animation_manager()
+            if manager:
+                await manager.stop(self._entry.entry_id)
+            self._effect = SCENE_ALBUM_ART
+            self._last_effect = SCENE_ALBUM_ART
+            self._manual_color = None
+            if not self._randomize_color_assignment:
+                self._random_assignment_order = None
+            await self._apply_album_art(force=True, reuse_random_assignment=reuse_random_assignment)
             return
 
         is_random_request = effect == SCENE_RANDOM
         if is_random_request:
-            if not self._cached_options:
+            random_options = [name for name in self._cached_options if name not in (SCENE_ALBUM_ART, SCENE_RANDOM, SCENE_OFF)]
+            if not random_options:
                 self._last_error = "No scenes available for random selection"
                 _LOGGER.warning(self._last_error)
                 return
-            effect = random.choice(self._cached_options)
+            effect = random.choice(random_options)
             _LOGGER.info("Random scene selected: '%s'", effect)
 
         image_path = await self._find_image_for_scene(effect)
@@ -528,17 +604,20 @@ class ChameleonLight(LightEntity):
         transition = self._get_runtime_transition()
         brightness = self._brightness_pct
 
-        if transition > 0:
+        if self._animation_enabled and transition > 0:
             result = await self._apply_colors_animated(image_path, brightness)
         else:
             result = await self._apply_colors_static(image_path, brightness)
+
+        if not result.results:
+            return
 
         if result.all_succeeded:
             self._effect = effect
             self._last_effect = effect
             self._applied_colors = result.applied_colors
             self._last_scene_change = datetime.now()
-            verb = "animation started" if transition > 0 else "applied"
+            verb = "animation started" if self._animation_enabled and transition > 0 else "applied"
             _LOGGER.info("Scene '%s' %s successfully", effect, verb)
         elif result.all_failed:
             self._last_error = "Failed to apply colors to any lights"
@@ -583,7 +662,7 @@ class ChameleonLight(LightEntity):
                 await self._apply_album_art()
                 self.async_write_ha_state()
 
-    async def _apply_album_art(self) -> None:
+    async def _apply_album_art(self, *, force: bool = False, reuse_random_assignment: bool = False) -> None:
         """Download, extract, and apply the configured media player's artwork."""
         if not self._media_player_entity:
             self._last_error = "No album-art media player configured"
@@ -598,9 +677,15 @@ class ChameleonLight(LightEntity):
         if not isinstance(entity_picture, str) or not entity_picture:
             self._last_error = "Configured media player has no album artwork"
             return
+        if media_state.state in ("off", "idle", "unavailable", "unknown") or _is_placeholder_art(entity_picture):
+            self._last_error = "Configured media player has no current album artwork"
+            return
+        if not self._source_has_real_artwork():
+            self._last_error = "Configured media player is showing fallback artwork"
+            return
 
         artwork_key = entity_picture
-        if artwork_key == self._last_artwork_key and self._effect == SCENE_ALBUM_ART:
+        if not force and artwork_key == self._last_artwork_key:
             return
 
         try:
@@ -621,24 +706,37 @@ class ChameleonLight(LightEntity):
             self._last_error = "Unable to extract colors from album artwork"
             return
         colors = self._prepare_palette(colors)
+        if not colors:
+            self._last_error = "No vivid colors found in album artwork"
+            return
+
+        previous_order = self._random_assignment_order
+        if self._randomize_color_assignment and not reuse_random_assignment:
+            self._random_assignment_order = randomized_light_order(self._light_entities, previous_order)
+        elif not self._randomize_color_assignment:
+            self._random_assignment_order = None
 
         manager = self._get_animation_manager()
         if manager:
             await manager.stop(self._entry.entry_id)
 
         transition = self._get_runtime_transition()
-        if transition > 0:
-            result = await self._apply_palette_animated(colors, self._brightness_pct)
-        else:
-            result = await self._apply_palette_static(colors, self._brightness_pct)
+        # Apply the new cover's colors now. The animated controller can wait
+        # for a staggered phase offset and otherwise starts with a long fade.
+        result = await self._apply_palette_static(
+            colors, self._brightness_pct,
+            transition=0 if self._animation_enabled else None,
+        )
 
         if result.all_failed:
+            self._random_assignment_order = previous_order
             self._last_error = "Failed to apply album-art colors to any lights"
             self._failed_lights = result.failed_lights
             return
+        if self._animation_enabled and transition > 0:
+            await self._apply_palette_animated(colors, self._brightness_pct)
 
         self._effect = SCENE_ALBUM_ART
-        self._random_assignment_order = None
         self._last_effect = SCENE_ALBUM_ART
         self._manual_color = None
         self._extracted_palette = colors
@@ -709,7 +807,7 @@ class ChameleonLight(LightEntity):
         """Extract and apply colors statically (no animation loop)."""
         num_lights = len(self._light_entities)
 
-        if num_lights == 1:
+        if num_lights == 1 and not self._interesting_colors:
             color = await extract_dominant_color(self.hass, image_path)
             if color:
                 color = self._prepare_palette([color])[0]
@@ -717,6 +815,7 @@ class ChameleonLight(LightEntity):
                 return await self._light_controller.apply_colors_to_lights(
                     {self._light_entities[0]: color},
                     brightness=brightness,
+                    transition=self._get_runtime_transition() if not self._animation_enabled else None,
                 )
             _LOGGER.error("Failed to extract dominant color from %s", image_path)
             return ApplyColorsResult()
@@ -732,14 +831,23 @@ class ChameleonLight(LightEntity):
 
         colors = self._prepare_palette(colors)
 
+        if not colors:
+            self._last_error = "No vivid colors found in image scene"
+            return ApplyColorsResult()
         self._extracted_palette = colors
         return await self._apply_palette_static(colors, brightness)
 
-    async def _apply_palette_static(self, colors: list[RGBColor], brightness: int) -> ApplyColorsResult:
+    async def _apply_palette_static(self, colors: list[RGBColor], brightness: int, *, transition: float | None = None) -> ApplyColorsResult:
         """Distribute an already-extracted palette across configured lights."""
         light_order = self._random_assignment_order or self._light_entities
         light_colors = {entity: colors[i % len(colors)] for i, entity in enumerate(light_order)}
-        return await self._light_controller.apply_colors_to_lights(light_colors, brightness=brightness)
+        transition_time = transition
+        if transition_time is None and not self._animation_enabled:
+            transition_time = self._get_runtime_transition()
+        return await self._light_controller.apply_colors_to_lights(
+            light_colors, brightness=brightness,
+            transition=transition_time,
+        )
 
     async def _apply_colors_animated(self, image_path: Path, brightness: int) -> ApplyColorsResult:
         """Extract colors and start an animation across the configured lights."""
@@ -759,6 +867,9 @@ class ChameleonLight(LightEntity):
 
         colors = self._prepare_palette(colors)
 
+        if not colors:
+            self._last_error = "No vivid colors found in image scene"
+            return ApplyColorsResult()
         self._extracted_palette = colors
         return await self._apply_palette_animated(colors, brightness)
 
@@ -847,6 +958,8 @@ class ChameleonLight(LightEntity):
         for ext in SUPPORTED_EXTENSIONS:
             for image_path in image_dir.glob(f"*{ext}"):
                 scene_name = _scene_name_from_filename(image_path.stem)
+                if scene_name in (SCENE_ALBUM_ART, SCENE_RANDOM, SCENE_OFF):
+                    continue
                 if scene_name not in scene_to_path:
                     scene_to_path[scene_name] = image_path
 

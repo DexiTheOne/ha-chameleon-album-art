@@ -1,5 +1,13 @@
 # Chameleon change log
 
+## 2026-09-23 — Preserve pale blue in the current album cover
+
+- Request: compare the current Squeezebox cover with the assigned light colors after no blue appeared.
+- Affected objects: `switch.chameleon_common_area_interesting_colors`, the active Album Art effect, and seven configured lights. No code or entity IDs changed.
+- Findings and action: The current `Kills You Slowly` cover is predominantly pale blue with smaller coral text areas. Sample blue pixels are about `(205, 234, 248)` with HSV saturation around 0.17, below the switch's 0.28 minimum and also below its pale-highlight threshold. With the filter on, Chameleon reported four orange palette colors. Turned the filter off and reapplied Album Art; the palette became three blue and four coral colors.
+- Validation and limits: All seven physical lights reported their assigned colors after the reapply, including three blue lights. The current cover was fetched from Home Assistant's media-player proxy and visually inspected. The filter remains off, so future covers may also include pale or muted colors.
+- Rollback: Turn on `switch.chameleon_common_area_interesting_colors` and reselect Album Art to restore the prior vivid-only palette behavior.
+
 ## 2026-09-23 — Read the complete Squeezebox artwork response
 
 - Request: Album Art remained selected while Squeezebox Boom played, but light colors did not update.

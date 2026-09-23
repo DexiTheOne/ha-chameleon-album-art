@@ -42,6 +42,14 @@ def test_normalize_palette_brightness_keeps_neutral_colors_neutral():
     ]
 
 
+def test_normalize_animated_gradient_keeps_intermediate_colors_bright():
+    """RGB interpolation should not reintroduce dim color values."""
+    gradient = generate_gradient_path([(255, 0, 0), (0, 255, 0)], steps_between=10)
+    normalized = normalize_palette_brightness(gradient)
+    assert len(normalized) == len(gradient)
+    assert all(max(color) == 255 for color in normalized)
+
+
 @pytest.mark.asyncio
 async def test_extract_color_palette_bytes_uses_in_memory_image():
     """Album art can be processed without writing its bytes or token to disk."""

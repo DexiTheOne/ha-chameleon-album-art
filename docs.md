@@ -1,5 +1,14 @@
 # Chameleon change log
 
+## 2026-09-23 — Deploy and verify combined controls
+
+- Request: push the combined local changes, update the live HACS integration, and test it.
+- Affected objects: the existing Chameleon integration entry, its scene light and existing controls, plus new Animation and Only Interesting Colors switches. The configured light order and existing entity IDs were preserved.
+- Actions: reviewed the combined diff, corrected switch and Configure option preservation, guarded empty palette results, committed and pushed the integration to the private GitHub remote, installed that commit with HACS, checked Home Assistant configuration, and restarted Home Assistant. A pre-change backup was attempted but Home Assistant rejected it because no default backup password is configured. The prior HACS commit remains available for rollback.
+- Validation: the integration reloaded; HACS reported the installed commit; both new switches appeared on the same device. The color filter persisted its option when toggled. With Animation off, a live image scene applied a static palette with no running animation; the filter reduced a second scene palette from seven swatches to six. The original transition, style, Random assignment setting, script and helper references, and all controlled-light states were read back. The lights were restored to their recorded on/off states and colors, and Animation was returned to on. No Chameleon error was found in the recent Home Assistant error log. Local Python compilation, JSON parsing, and whitespace checks passed; pytest is unavailable in both local Python environments.
+- Limits and rollback: the configured artwork source was off, so a real album-art change could not be tested. The filter was left on to fulfill the requested behavior. Turn it off to restore all extracted swatches, or reinstall the prior HACS commit and restart to roll back the integration.
+
+
 ## 2026-09-23 — Only Interesting Colors control
 
 - Request: add a device control that selects vivid colors from album art and image scenes.

@@ -1,5 +1,13 @@
 # Chameleon change log
 
+## 2026-09-23 — Read the complete Squeezebox artwork response
+
+- Request: Album Art remained selected while Squeezebox Boom played, but light colors did not update.
+- Affected objects: Chameleon's bounded album-art downloader. Config entry, entity IDs, scenes, and light order are unchanged.
+- Findings and action: Live readback found Boom playing with an `entity_picture` and the Chameleon light reporting an extraction error. The Home Assistant system log gave `image file is truncated (6 bytes not processed)`. The downloader made one `aiohttp` stream `read(n)` call and treated its result as the entire image, although that call can return fewer bytes than requested before EOF. It now consumes the response in chunks through EOF and enforces the 10 MB limit after each chunk. A genuine malformed source image still raises an extraction error.
+- Validation and limits: Python compilation and diff checks passed. Pytest is unavailable locally. The actual upstream and proxy image bytes were not independently captured, so their integrity remains unverified; the change has not been deployed.
+- Rollback: Revert the chunked download change, then reinstall the previous integration revision if deployed.
+
 ## 2026-09-23 — Deploy and verify combined controls
 
 - Request: push the combined local changes, update the live HACS integration, and test it.

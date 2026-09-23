@@ -765,9 +765,12 @@ class ChameleonLight(LightEntity):
             content_length = response.headers.get("Content-Length")
             if content_length and int(content_length) > MAX_ALBUM_ART_BYTES:
                 raise ValueError("Artwork exceeds size limit")
-            image_bytes = await response.content.read(MAX_ALBUM_ART_BYTES + 1)
-            if len(image_bytes) > MAX_ALBUM_ART_BYTES:
-                raise ValueError("Artwork exceeds size limit")
+            image_data = bytearray()
+            async for chunk in response.content.iter_chunked(64 * 1024):
+                image_data.extend(chunk)
+                if len(image_data) > MAX_ALBUM_ART_BYTES:
+                    raise ValueError("Artwork exceeds size limit")
+            image_bytes = bytes(image_data)
             if not image_bytes:
                 raise ValueError("Artwork response is empty")
             return image_bytes

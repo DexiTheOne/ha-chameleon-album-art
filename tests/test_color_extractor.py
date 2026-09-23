@@ -10,6 +10,8 @@ from PIL import Image
 
 from custom_components.chameleon.color_extractor import (
     _normalize_palette,
+    clamp_rgb_color,
+    normalize_palette_brightness,
     extract_color_palette_bytes,
     generate_gradient_path,
     rgb_to_hs,
@@ -19,6 +21,25 @@ from custom_components.chameleon.color_extractor import (
 def test_normalize_palette_clamps_rgb_channels():
     """Extractor quirks cannot send invalid channel values to lights."""
     assert _normalize_palette([(256, -1, 128)]) == [(255, 0, 128)]
+    assert clamp_rgb_color((-10, 300, 128.9)) == (0, 255, 128)
+
+
+def test_normalize_palette_brightness_preserves_hue_and_equalizes_value():
+    """Dark and muted image colors become bright LED RGB values."""
+    colors = [(32, 4, 4), (40, 80, 120), (180, 170, 160)]
+    result = normalize_palette_brightness(colors)
+    assert all(max(color) == 255 for color in result)
+    assert result[0][0] == 255 and result[0][1] < 100
+    assert result[1][2] == 255 and result[1][0] < result[1][1]
+    assert result[2][0] == 255 and result[2][1] < result[2][0]
+
+
+def test_normalize_palette_brightness_keeps_neutral_colors_neutral():
+    """Black and gray have no usable hue and should not turn into red."""
+    assert normalize_palette_brightness([(0, 0, 0), (50, 50, 50)]) == [
+        (255, 255, 255),
+        (255, 255, 255),
+    ]
 
 
 @pytest.mark.asyncio

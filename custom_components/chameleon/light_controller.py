@@ -32,7 +32,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 
-from .color_extractor import RGBColor
+from .color_extractor import RGBColor, clamp_rgb_color
 from .const import STATIC_TRANSITION_TIME
 
 _LOGGER = logging.getLogger(__name__)
@@ -194,6 +194,7 @@ class LightController:
                 )
 
         transition_time = transition if transition is not None else self.transition_time
+        color = clamp_rgb_color(color)
 
         # Build service call data
         service_data = {

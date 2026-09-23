@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 from homeassistant.components.light import ATTR_BRIGHTNESS, ATTR_RGB_COLOR, ATTR_TRANSITION
 from homeassistant.const import ATTR_ENTITY_ID, SERVICE_TURN_ON
 
+from .color_extractor import clamp_rgb_color
 from .const import DEFAULT_TRANSITION_STYLE, TRANSITION_STYLE_SYNC
 
 if TYPE_CHECKING:
@@ -179,7 +180,7 @@ class AnimationController:
         """Send a turn_on with the given color, brightness, and fade duration."""
         service_data: dict[str, object] = {
             ATTR_ENTITY_ID: light_entity,
-            ATTR_RGB_COLOR: list(color),
+            ATTR_RGB_COLOR: list(clamp_rgb_color(color)),
             ATTR_TRANSITION: transition,
         }
 

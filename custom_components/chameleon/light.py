@@ -48,18 +48,22 @@ from homeassistant.helpers.network import get_url
 
 from .color_extractor import (
     RGBColor,
+    clamp_rgb_color,
     extract_color_palette,
     extract_color_palette_bytes,
     extract_dominant_color,
     generate_gradient_path,
+    normalize_palette_brightness,
 )
 from .const import (
     CONF_LIGHT_ENTITIES,
     CONF_LIGHT_ENTITY,
     CONF_MEDIA_PLAYER_ENTITY,
+    CONF_NORMALIZE_BRIGHTNESS,
     CONF_TRANSITION,
     DEFAULT_BRIGHTNESS,
     DEFAULT_COLOR_COUNT,
+    DEFAULT_NORMALIZE_BRIGHTNESS,
     DEFAULT_TRANSITION,
     DEFAULT_TRANSITION_STYLE,
     DOMAIN,
@@ -98,9 +102,13 @@ async def async_setup_entry(
         CONF_MEDIA_PLAYER_ENTITY,
         entry.data.get(CONF_MEDIA_PLAYER_ENTITY),
     )
+    normalize_brightness = entry.options.get(
+        CONF_NORMALIZE_BRIGHTNESS,
+        entry.data.get(CONF_NORMALIZE_BRIGHTNESS, DEFAULT_NORMALIZE_BRIGHTNESS),
+    )
 
     async_add_entities(
-        [ChameleonLight(hass, entry, light_entities, initial_transition, media_player_entity)],
+        [ChameleonLight(hass, entry, light_entities, initial_transition, media_player_entity, normalize_brightness)],
         True,
     )
 
@@ -137,6 +145,7 @@ class ChameleonLight(LightEntity):
         light_entities: list[str],
         initial_transition: float,
         media_player_entity: str | None = None,
+        normalize_brightness: bool = DEFAULT_NORMALIZE_BRIGHTNESS,
     ) -> None:
         """Initialize the Chameleon light entity."""
         self.hass = hass
@@ -144,6 +153,7 @@ class ChameleonLight(LightEntity):
         self._light_entities = light_entities
         self._initial_transition = initial_transition
         self._media_player_entity = media_player_entity
+        self._normalize_brightness = normalize_brightness
         self._remove_media_listener: Callable[[], None] | None = None
         self._last_artwork_key: str | None = None
         self._album_art_updated_at: datetime | None = None
@@ -189,6 +199,12 @@ class ChameleonLight(LightEntity):
 
     def _get_runtime_transition_style(self) -> str:
         return _entry_data(self.hass, self._entry.entry_id).get("transition_style", DEFAULT_TRANSITION_STYLE)
+
+    def _prepare_palette(self, colors: list[RGBColor]) -> list[RGBColor]:
+        """Adjust source-image RGB values before static or animated output."""
+        if self._normalize_brightness:
+            return normalize_palette_brightness(colors)
+        return colors
 
     # ── Lifecycle ────────────────────────────────────────────────────────
 
@@ -277,6 +293,7 @@ class ChameleonLight(LightEntity):
             "light_count": len(self._light_entities),
             "applied_colors": self._applied_colors,
             "is_animating": manager.is_running(self._entry.entry_id) if manager else False,
+            "normalize_brightness": self._normalize_brightness,
         }
 
         if self._media_player_entity:
@@ -579,6 +596,7 @@ class ChameleonLight(LightEntity):
         if not colors:
             self._last_error = "Unable to extract colors from album artwork"
             return
+        colors = self._prepare_palette(colors)
 
         manager = self._get_animation_manager()
         if manager:
@@ -633,6 +651,7 @@ class ChameleonLight(LightEntity):
 
     async def _apply_manual_color(self, rgb_color: RGBColor) -> None:
         """Apply a single RGB color directly to all underlying lights."""
+        rgb_color = clamp_rgb_color(rgb_color)
         manager = self._get_animation_manager()
         if manager:
             await manager.stop(self._entry.entry_id)
@@ -667,6 +686,7 @@ class ChameleonLight(LightEntity):
         if num_lights == 1:
             color = await extract_dominant_color(self.hass, image_path)
             if color:
+                color = self._prepare_palette([color])[0]
                 self._extracted_palette = [color]
                 return await self._light_controller.apply_colors_to_lights(
                     {self._light_entities[0]: color},
@@ -683,6 +703,8 @@ class ChameleonLight(LightEntity):
         if not colors:
             _LOGGER.error("Failed to extract color palette from %s", image_path)
             return ApplyColorsResult()
+
+        colors = self._prepare_palette(colors)
 
         self._extracted_palette = colors
         return await self._apply_palette_static(colors, brightness)
@@ -708,6 +730,8 @@ class ChameleonLight(LightEntity):
             _LOGGER.error("Failed to extract color palette from %s", image_path)
             return ApplyColorsResult()
 
+        colors = self._prepare_palette(colors)
+
         self._extracted_palette = colors
         return await self._apply_palette_animated(colors, brightness)
 
@@ -721,6 +745,8 @@ class ChameleonLight(LightEntity):
         transition = self._get_runtime_transition()
         style = self._get_runtime_transition_style()
         gradient = generate_gradient_path(colors, steps_between=10)
+        if self._normalize_brightness:
+            gradient = normalize_palette_brightness(gradient)
 
         # Pre-flight availability so we don't animate dead lights.
         results: list[LightResult] = []

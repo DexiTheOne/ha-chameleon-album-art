@@ -7,12 +7,14 @@
         "data": {
           "light_entities": "Light Entities",
           "transition": "Transition",
-          "media_player_entity": "Album Art Media Player"
+          "media_player_entity": "Album Art Media Player",
+          "normalize_brightness": "Normalize Brightness"
         },
         "data_description": {
           "light_entities": "The RGB lights to control with scene colors. Each light will receive a unique color from the image palette.",
           "transition": "Fade duration in seconds between colors. Set to 0 to disable animation (static scenes only).",
-          "media_player_entity": "Optional media player whose current album artwork is used by the Album Art effect."
+          "media_player_entity": "Optional media player whose current album artwork is used by the Album Art effect.",
+          "normalize_brightness": "Adjust extracted RGB colors for bright, vibrant LED output. This does not change the light brightness setting."
         }
       }
     },
@@ -26,13 +28,15 @@
   "options": {
     "step": {
       "init": {
-        "title": "Configure Album Art",
-        "description": "Choose an optional media player for the Album Art effect. Clear the field to disable it.",
+        "title": "Configure Chameleon",
+        "description": "Choose an optional album-art source and how extracted colors appear on LEDs.",
         "data": {
-          "media_player_entity": "Album Art Media Player"
+          "media_player_entity": "Album Art Media Player",
+          "normalize_brightness": "Normalize Brightness"
         },
         "data_description": {
-          "media_player_entity": "Artwork changes update the configured Chameleon lights only while the Album Art effect is active."
+          "media_player_entity": "Artwork changes update the configured Chameleon lights only while the Album Art effect is active.",
+          "normalize_brightness": "Change extracted RGB values to bright, vibrant colors with a similar output level. The Home Assistant brightness slider is unchanged."
         }
       }
     }

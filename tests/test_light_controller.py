@@ -193,6 +193,17 @@ class TestLightController:
         hass.services.async_call.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_apply_color_to_light_clamps_rgb_before_service(self, hass, mock_light_state):
+        """No color path can send out-of-range RGB channels to a bulb."""
+        hass.states.get.return_value = mock_light_state
+        hass.services.async_call = AsyncMock()
+
+        result = await LightController(hass).apply_color_to_light("light.test_light", (-20, 310, 128))
+
+        assert result.color == (0, 255, 128)
+        assert hass.services.async_call.call_args.args[2]["rgb_color"] == [0, 255, 128]
+
+    @pytest.mark.asyncio
     async def test_apply_color_to_light_unavailable(self, hass):
         """Test applying color to unavailable light."""
         hass.states.get.return_value = None  # Light doesn't exist

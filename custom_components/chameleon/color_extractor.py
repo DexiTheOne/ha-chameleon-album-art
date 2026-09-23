@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import colorsys
 import logging
 from io import BytesIO
 from pathlib import Path
@@ -16,8 +17,8 @@ _LOGGER = logging.getLogger(__name__)
 type RGBColor = tuple[int, int, int]
 
 
-def _normalize_color(color: RGBColor) -> RGBColor:
-    """Clamp extractor output to Home Assistant's valid 8-bit RGB range."""
+def clamp_rgb_color(color: RGBColor) -> RGBColor:
+    """Clamp every channel to the 8-bit RGB range accepted by light services."""
     return (
         max(0, min(255, int(color[0]))),
         max(0, min(255, int(color[1]))),
@@ -27,7 +28,26 @@ def _normalize_color(color: RGBColor) -> RGBColor:
 
 def _normalize_palette(colors: list[RGBColor]) -> list[RGBColor]:
     """Normalize every color in a palette."""
-    return [_normalize_color(color) for color in colors]
+    return [clamp_rgb_color(color) for color in colors]
+
+
+def normalize_palette_brightness(colors: list[RGBColor]) -> list[RGBColor]:
+    """Make extracted colors bright and colorful without changing their hue.
+
+    HSV value equalizes RGB output level; a saturation floor keeps muted image
+    swatches colorful on LEDs. Nearly neutral or black colors have no reliable
+    hue, so they become white rather than an arbitrary saturated color.
+    """
+    result: list[RGBColor] = []
+    for color in colors:
+        r, g, b = clamp_rgb_color(color)
+        h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+        if v < 0.05 or s < 0.08:
+            result.append((255, 255, 255))
+            continue
+        bright_r, bright_g, bright_b = colorsys.hsv_to_rgb(h, max(s, 0.65), 1.0)
+        result.append((round(bright_r * 255), round(bright_g * 255), round(bright_b * 255)))
+    return result
 
 
 def _sync_extract_dominant_color(image_path: str, quality: int) -> RGBColor | None:

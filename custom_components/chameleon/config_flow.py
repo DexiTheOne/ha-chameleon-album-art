@@ -8,6 +8,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlowWithReload
 from homeassistant.core import callback
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     EntitySelector,
     EntitySelectorConfig,
     NumberSelector,
@@ -18,7 +19,9 @@ from homeassistant.helpers.selector import (
 from .const import (
     CONF_LIGHT_ENTITIES,
     CONF_MEDIA_PLAYER_ENTITY,
+    CONF_NORMALIZE_BRIGHTNESS,
     CONF_TRANSITION,
+    DEFAULT_NORMALIZE_BRIGHTNESS,
     DEFAULT_TRANSITION,
     DOMAIN,
     MAX_TRANSITION,
@@ -75,6 +78,7 @@ class ChameleonConfigFlow(ConfigFlow, domain=DOMAIN):
                     )
                 ),
                 vol.Optional(CONF_MEDIA_PLAYER_ENTITY): EntitySelector(EntitySelectorConfig(domain="media_player")),
+                vol.Required(CONF_NORMALIZE_BRIGHTNESS, default=DEFAULT_NORMALIZE_BRIGHTNESS): BooleanSelector(),
             }
         )
 
@@ -86,7 +90,7 @@ class ChameleonConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class ChameleonOptionsFlow(OptionsFlowWithReload):
-    """Configure optional media-player album-art support."""
+    """Configure album art and LED palette enhancement."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage Chameleon options."""
@@ -101,7 +105,15 @@ class ChameleonOptionsFlow(OptionsFlowWithReload):
         if current_media_player:
             schema_key = vol.Optional(CONF_MEDIA_PLAYER_ENTITY, default=current_media_player)
 
+        normalize_brightness = self.config_entry.options.get(
+            CONF_NORMALIZE_BRIGHTNESS,
+            self.config_entry.data.get(CONF_NORMALIZE_BRIGHTNESS, DEFAULT_NORMALIZE_BRIGHTNESS),
+        )
+
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema({schema_key: EntitySelector(EntitySelectorConfig(domain="media_player"))}),
+            data_schema=vol.Schema({
+                schema_key: EntitySelector(EntitySelectorConfig(domain="media_player")),
+                vol.Required(CONF_NORMALIZE_BRIGHTNESS, default=normalize_brightness): BooleanSelector(),
+            }),
         )

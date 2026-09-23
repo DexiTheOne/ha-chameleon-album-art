@@ -19,6 +19,8 @@ SUPPORTED_EXTENSIONS: Final = (".jpg", ".jpeg", ".png")
 CONF_LIGHT_ENTITY: Final = "light_entity"  # Deprecated, kept for migration
 CONF_LIGHT_ENTITIES: Final = "light_entities"  # New: list of light entities
 CONF_MEDIA_PLAYER_ENTITY: Final = "media_player_entity"
+CONF_NORMALIZE_BRIGHTNESS: Final = "normalize_brightness"
+DEFAULT_NORMALIZE_BRIGHTNESS: Final = False
 CONF_TRANSITION: Final = "transition"
 
 # Platforms. Light is the primary entity; select hosts the transition style picker;

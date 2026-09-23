@@ -9,6 +9,7 @@ import pytest
 from custom_components.chameleon.const import (
     CONF_LIGHT_ENTITIES,
     CONF_MEDIA_PLAYER_ENTITY,
+    CONF_NORMALIZE_BRIGHTNESS,
     CONF_TRANSITION,
 )
 
@@ -159,3 +160,13 @@ class TestChameleonOptionsFlow:
 
         assert result["type"] == FlowResultType.CREATE_ENTRY
         assert result["data"] == {CONF_MEDIA_PLAYER_ENTITY: "media_player.eversolo_dmp_a6"}
+
+    @pytest.mark.asyncio
+    async def test_save_normalize_brightness(self):
+        """The palette toggle is stored in the integration options."""
+        from custom_components.chameleon.config_flow import ChameleonOptionsFlow
+
+        flow = ChameleonOptionsFlow()
+        result = await flow.async_step_init({CONF_NORMALIZE_BRIGHTNESS: True})
+
+        assert result["data"] == {CONF_NORMALIZE_BRIGHTNESS: True}

@@ -1,5 +1,13 @@
 # Chameleon change log
 
+## 2026-09-23 — RGB normalization and output bounds
+
+- Request: add a Normalize Brightness toggle that changes extracted color values for brighter, more vibrant LED palettes while leaving the Home Assistant brightness setting alone; ensure every RGB service call stays within standard channel bounds.
+- Implementation: added the toggle to new-entry setup and the existing entry's Configure options. When enabled, image and album-art palette colors retain their hue, reach maximum HSV value, and receive a minimum saturation for chromatic colors. Neutral colors become white. Animated gradient steps receive the same treatment. Manual color selection keeps its requested color. Static, animated, and manual light commands now clamp every RGB channel to an integer from 0 to 255 immediately before the service call. The default is off for existing entries.
+- Validation: 45 local tests passed, including dark/muted/neutral palette and out-of-range RGB cases; Python compilation, JSON validation, and whitespace checks passed. Live deployment and the enabled-option readback are recorded below once completed.
+- Limits: equal RGB maximum values do not ensure equal perceived brightness across different hues or LED hardware. Exact physical matching requires device calibration. Home Assistant's separate brightness control remains unchanged.
+- Recovery: disable Normalize Brightness in the Chameleon Configure dialog to restore original extracted colors; reinstall the prior HACS commit if needed. The previous session found that Home Assistant cannot create a full backup until a default backup password is configured.
+
 ## 2026-09-22 — Move the live installation to the custom repository
 
 - Request: use the new `DexiTheOne/ha-chameleon-album-art` HACS repository while keeping the existing Common Area Accent Lights setup and automation behavior.

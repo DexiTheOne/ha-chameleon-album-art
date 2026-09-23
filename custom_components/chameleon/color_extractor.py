@@ -37,21 +37,29 @@ def _normalize_palette(colors: list[RGBColor]) -> list[RGBColor]:
 
 
 def select_interesting_colors(colors: list[RGBColor]) -> list[RGBColor]:
-    """Keep vivid, visible source swatches in their original dominance order.
+    """Keep distinct, visible hues in their original dominance order.
 
-    Score each normalized swatch before any brightness enhancement: a dark or
-    nearly neutral swatch cannot gain an artificial hue from that enhancement.
+    Score source swatches before brightness enhancement. A pale but distinctly
+    blue background has a usable hue; a near-white highlight or gray does not.
+    Muted warm skin tones and repeated shades of one hue should not crowd out
+    the rest of an album cover's palette.
     """
     result: list[RGBColor] = []
+    selected_hues: list[float] = []
     for color in colors:
         r, g, b = clamp_rgb_color(color)
-        _hue, saturation, value = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
-        if value < 0.18 or saturation < 0.28:
+        hue, saturation, value = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+        hue_degrees = hue * 360
+        if value < 0.18 or saturation < 0.15 or max(r, g, b) - min(r, g, b) < 30:
             continue
-        # Very pale pastels and highlights wash out on LEDs.
-        if value > 0.94 and saturation < 0.38:
+        # Typical muted tan/peach face colors are rarely useful LED accents.
+        # Saturated oranges and yellows outside this range remain available.
+        if 15 <= hue_degrees <= 50 and 0.15 <= saturation <= 0.6 and 0.3 <= value <= 0.95:
+            continue
+        if any(min(abs(hue_degrees - chosen), 360 - abs(hue_degrees - chosen)) < 25 for chosen in selected_hues):
             continue
         result.append((r, g, b))
+        selected_hues.append(hue_degrees)
     return result
 
 

@@ -1,5 +1,13 @@
 # Chameleon change log
 
+## 2026-09-23 — Keep clear pastels and reduce skin-tone dominance
+
+- Request: the vivid-color filter removed an obviously blue album background yet allowed face colors to dominate other covers.
+- Affected objects: Chameleon's shared image/album-art palette filter and its tests. The existing switch, config entry, entity IDs, scene names, and configured light order are preserved.
+- Implementation: lowered the source saturation floor only when RGB channel separation shows a definite hue, so near-white and gray remain excluded. Muted tan/peach tones in the typical skin hue range are rejected while vivid orange and yellow remain eligible. Repeated hues are collapsed in dominance order so multiple near-identical face or text shades cannot fill the palette. Existing Normalize Brightness can then raise retained pale blue to a bright LED blue.
+- Validation: all 60 local tests passed, including focused pale-blue and skin-tone cases. Reprocessing the captured `Kills You Slowly` cover with the installed ColorThief version yields blue `(201, 228, 244)` and coral `(231, 161, 147)` before brightness normalization, then LED colors `(89, 193, 255)` and `(255, 117, 89)`. Live deployment and testing are pending.
+- Limits and rollback: Skin-tone detection is based on color ranges, not face recognition, so unusual skin lighting and similarly colored artwork may be classified differently. Reinstall the prior HACS revision and restart to restore the old filter behavior; turning off Only Interesting Colors bypasses the filter immediately.
+
 ## 2026-09-23 — Preserve pale blue in the current album cover
 
 - Request: compare the current Squeezebox cover with the assigned light colors after no blue appeared.

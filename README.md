@@ -8,7 +8,7 @@ A Home Assistant custom integration that applies colors from images or a media p
 - Select **Album Art** as the Chameleon light effect to use the configured media player's current artwork.
 - Refresh album art colors when the media player's artwork changes while that effect is active.
 - Choose static colors or animated transitions with the companion transition controls.
-- Turn on **Only Interesting Colors** in the integration device controls to skip white, black, gray, very dark, and pale swatches in album art and image scenes. If none remain, the current lights are left unchanged.
+- Turn on **Only Interesting Colors** in the integration device controls to skip white, black, gray, very dark, muted tan/peach skin tones, and repeated shades of one hue in album art and image scenes. Pale colors with a clear hue, such as sky blue, remain available. If none remain, the current lights are left unchanged.
 - Enable **Normalize Brightness** in Chameleon's Configure dialog to turn extracted image colors into bright, vibrant LED colors without changing the light brightness setting.
 - Use the **Randomize Color Assignment** switch on the Chameleon device to shuffle which light receives each palette color whenever **Random** is selected or valid Album Art is updated. Named image scenes keep their configured light order.
 

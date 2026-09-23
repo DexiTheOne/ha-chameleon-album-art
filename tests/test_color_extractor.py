@@ -199,3 +199,18 @@ def test_interesting_colors_reject_neutrals_dark_and_pale_swatches():
               (180, 178, 170), (255, 220, 220), (210, 40, 90), (35, 100, 170)]
     assert select_interesting_colors(colors) == [(210, 40, 90), (35, 100, 170)]
     assert select_interesting_colors([(255, 255, 255)]) == []
+
+
+def test_interesting_colors_keeps_pale_blue_without_repeating_coral():
+    """The Squeezebox cover's dominant blue survives while coral shades collapse."""
+    colors = [(201, 228, 244), (23, 25, 27), (231, 161, 147),
+              (119, 90, 84), (234, 173, 157), (156, 122, 110), (121, 135, 143)]
+    assert select_interesting_colors(colors) == [(201, 228, 244), (231, 161, 147)]
+    bright = normalize_palette_brightness(select_interesting_colors(colors))
+    assert bright[0][2] == 255 and bright[0][0] < bright[0][2]
+
+
+def test_interesting_colors_suppresses_skin_tones_but_keeps_bright_orange():
+    colors = [(220, 180, 150), (190, 135, 100), (160, 110, 85),
+              (40, 110, 180), (255, 150, 20)]
+    assert select_interesting_colors(colors) == [(40, 110, 180), (255, 150, 20)]

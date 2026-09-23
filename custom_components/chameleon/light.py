@@ -216,6 +216,13 @@ class ChameleonLight(LightEntity):
             return normalize_palette_brightness(colors)
         return colors
 
+    def set_randomize_color_assignment(self, enabled: bool) -> None:
+        """Apply a control-switch change to the next Random selection."""
+        self._randomize_color_assignment = enabled
+        if not enabled:
+            self._random_assignment_order = None
+        self.async_write_ha_state()
+
     # ── Lifecycle ────────────────────────────────────────────────────────
 
     async def async_added_to_hass(self) -> None:

@@ -1,5 +1,12 @@
 # Chameleon change log
 
+## 2026-09-23 — Move Random assignment toggle into device controls
+
+- Request: show Randomize Color Assignment as a control entity instead of a setting in Configure.
+- Implementation: added a switch entity to each Chameleon device and removed the toggle from both setup and Configure forms. The switch reads the existing saved option, writes changes through the Home Assistant config-entry API, and updates the active Chameleon light immediately for the next Random selection. Configure preserves that saved option when other settings change. Existing device and light entity IDs stay the same.
+- Validation: 53 local tests passed, including switch persistence and removal from both setup and options forms; Python compilation, translation JSON validation, and diff checks passed. Live deployment and readback will be recorded below after installation.
+- Recovery: the prior HACS commit can be reinstalled without changing the saved option; the previous Configure toggle will read its value. No entity or device removal is required.
+
 ## 2026-09-23 — Random scene color assignment
 
 - Request: provide a toggle that changes the light-to-palette order each time Random chooses an image.

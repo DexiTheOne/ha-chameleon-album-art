@@ -81,7 +81,6 @@ class ChameleonConfigFlow(ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Optional(CONF_MEDIA_PLAYER_ENTITY): EntitySelector(EntitySelectorConfig(domain="media_player")),
                 vol.Required(CONF_NORMALIZE_BRIGHTNESS, default=DEFAULT_NORMALIZE_BRIGHTNESS): BooleanSelector(),
-                vol.Required(CONF_RANDOMIZE_COLOR_ASSIGNMENT, default=DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT): BooleanSelector(),
             }
         )
 
@@ -98,7 +97,14 @@ class ChameleonOptionsFlow(OptionsFlowWithReload):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage Chameleon options."""
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            # The assignment switch owns this option. Keep it when the user
+            # changes media-player or brightness settings through this flow.
+            options = dict(user_input)
+            options[CONF_RANDOMIZE_COLOR_ASSIGNMENT] = self.config_entry.options.get(
+                CONF_RANDOMIZE_COLOR_ASSIGNMENT,
+                self.config_entry.data.get(CONF_RANDOMIZE_COLOR_ASSIGNMENT, DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT),
+            )
+            return self.async_create_entry(title="", data=options)
 
         current_media_player = self.config_entry.options.get(
             CONF_MEDIA_PLAYER_ENTITY,
@@ -112,16 +118,11 @@ class ChameleonOptionsFlow(OptionsFlowWithReload):
             CONF_NORMALIZE_BRIGHTNESS,
             self.config_entry.data.get(CONF_NORMALIZE_BRIGHTNESS, DEFAULT_NORMALIZE_BRIGHTNESS),
         )
-        randomize_color_assignment = self.config_entry.options.get(
-            CONF_RANDOMIZE_COLOR_ASSIGNMENT,
-            self.config_entry.data.get(CONF_RANDOMIZE_COLOR_ASSIGNMENT, DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT),
-        )
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
                 schema_key: EntitySelector(EntitySelectorConfig(domain="media_player")),
                 vol.Required(CONF_NORMALIZE_BRIGHTNESS, default=normalize_brightness): BooleanSelector(),
-                vol.Required(CONF_RANDOMIZE_COLOR_ASSIGNMENT, default=randomize_color_assignment): BooleanSelector(),
             }),
         )

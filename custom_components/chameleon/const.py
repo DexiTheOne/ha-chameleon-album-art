@@ -25,10 +25,9 @@ CONF_RANDOMIZE_COLOR_ASSIGNMENT: Final = "randomize_color_assignment"
 DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT: Final = False
 CONF_TRANSITION: Final = "transition"
 
-# Platforms. Light is the primary entity; select hosts the transition style picker;
-# number hosts the transition slider. No switch (animation on/off is transition=0)
-# and no scene select (scenes are exposed as the light's effects).
-PLATFORMS: Final = ["light", "select", "number"]
+# Light hosts scene effects, select the transition style, number the transition
+# duration, and switch the Random-scene color assignment control.
+PLATFORMS: Final = ["light", "select", "number", "switch"]
 
 # Services
 SERVICE_APPLY_SCENE: Final = "apply_scene"

@@ -9,7 +9,7 @@ A Home Assistant custom integration that applies colors from images or a media p
 - Refresh album art colors when the media player's artwork changes while that effect is active.
 - Choose static colors or animated transitions with the companion transition controls.
 - Enable **Normalize Brightness** in Chameleon's Configure dialog to turn extracted image colors into bright, vibrant LED colors without changing the light brightness setting.
-- Enable **Randomize Color Assignment** in Configure to shuffle which light receives each palette color whenever **Random** is selected. Named scenes and Album Art keep their configured light order.
+- Use the **Randomize Color Assignment** switch on the Chameleon device to shuffle which light receives each palette color whenever **Random** is selected. Named scenes and Album Art keep their configured light order.
 
 Album artwork is kept in memory and is limited to 10 MB per download. If artwork is unavailable, the last successfully applied light colors remain in place and the Chameleon light reports `last_error`.
 
@@ -17,7 +17,7 @@ Normalize Brightness is off by default for existing setups. When enabled, each e
 
 All RGB channels are clamped to integer values from 0 through 255 before sending a light command, including animation and manual-color commands. This prevents out-of-range RGB service data. A bulb's narrower physical color gamut can still cause it to approximate a requested color.
 
-Randomize Color Assignment is off by default. With it on, each Random selection chooses an image and a new light-to-palette assignment. Static scenes assign one palette color per light; animated scenes use that shuffled light order for their starting colors. Reapplying the selected scene due to a transition/style change keeps the current assignment until Random is selected again.
+Randomize Color Assignment is a switch in the Chameleon device's Controls section. Existing setups keep their current on/off value when updating. New setups start with it off. With it on, each Random selection chooses an image and a new light-to-palette assignment. Static scenes assign one palette color per light; animated scenes use that shuffled light order for their starting colors. Reapplying the selected scene due to a transition/style change keeps the current assignment until Random is selected again.
 
 ## Install with HACS
 

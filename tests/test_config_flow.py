@@ -62,6 +62,8 @@ class TestChameleonConfigFlow:
         assert result["type"] == FlowResultType.FORM
         assert result["step_id"] == "user"
         assert result["errors"] == {}
+        fields = {key.schema for key in result["data_schema"].schema}
+        assert CONF_RANDOMIZE_COLOR_ASSIGNMENT not in fields
 
     @pytest.mark.asyncio
     async def test_create_entry_single_light(self, hass: MagicMock):
@@ -157,10 +159,14 @@ class TestChameleonOptionsFlow:
         from custom_components.chameleon.config_flow import ChameleonOptionsFlow
 
         flow = ChameleonOptionsFlow()
+        flow.config_entry = MagicMock(options={CONF_RANDOMIZE_COLOR_ASSIGNMENT: True}, data={})
         result = await flow.async_step_init({CONF_MEDIA_PLAYER_ENTITY: "media_player.eversolo_dmp_a6"})
 
         assert result["type"] == FlowResultType.CREATE_ENTRY
-        assert result["data"] == {CONF_MEDIA_PLAYER_ENTITY: "media_player.eversolo_dmp_a6"}
+        assert result["data"] == {
+            CONF_MEDIA_PLAYER_ENTITY: "media_player.eversolo_dmp_a6",
+            CONF_RANDOMIZE_COLOR_ASSIGNMENT: True,
+        }
 
     @pytest.mark.asyncio
     async def test_save_normalize_brightness(self):
@@ -168,16 +174,19 @@ class TestChameleonOptionsFlow:
         from custom_components.chameleon.config_flow import ChameleonOptionsFlow
 
         flow = ChameleonOptionsFlow()
+        flow.config_entry = MagicMock(options={CONF_RANDOMIZE_COLOR_ASSIGNMENT: True}, data={})
         result = await flow.async_step_init({CONF_NORMALIZE_BRIGHTNESS: True})
 
-        assert result["data"] == {CONF_NORMALIZE_BRIGHTNESS: True}
+        assert result["data"] == {CONF_NORMALIZE_BRIGHTNESS: True, CONF_RANDOMIZE_COLOR_ASSIGNMENT: True}
 
     @pytest.mark.asyncio
-    async def test_save_randomize_color_assignment(self):
-        """The Random-scene shuffle toggle is stored in integration options."""
+    async def test_randomize_color_assignment_is_not_in_options_form(self):
+        """The switch is the only user-facing control for this setting."""
         from custom_components.chameleon.config_flow import ChameleonOptionsFlow
 
         flow = ChameleonOptionsFlow()
-        result = await flow.async_step_init({CONF_RANDOMIZE_COLOR_ASSIGNMENT: True})
+        flow.config_entry = MagicMock(options={CONF_RANDOMIZE_COLOR_ASSIGNMENT: True}, data={})
+        result = await flow.async_step_init()
 
-        assert result["data"] == {CONF_RANDOMIZE_COLOR_ASSIGNMENT: True}
+        fields = {key.schema for key in result["data_schema"].schema}
+        assert CONF_RANDOMIZE_COLOR_ASSIGNMENT not in fields

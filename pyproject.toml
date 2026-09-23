@@ -18,7 +18,7 @@ keywords = [
 name = "ha-chameleon-album-art"
 readme = "README.md"
 requires-python = ">=3.14"
-version = "3.0.0+albumart.3"
+version = "3.0.0+albumart.4"
 
 # Runtime dependencies (same as manifest.json requirements)
 # These are installed by HA automatically, but listed here for IDE support

@@ -26,6 +26,7 @@ def _setup_homeassistant_mocks():
     mock_ha_helpers_selector = MagicMock()
     mock_ha_helpers_cv = MagicMock()
     mock_ha_components_select = MagicMock()
+    mock_ha_components_switch = MagicMock()
 
     # Define ColorMode enum-like values
     class ColorMode:
@@ -141,6 +142,14 @@ def _setup_homeassistant_mocks():
 
     mock_ha_components_select.SelectEntity = SelectEntity
 
+    class SwitchEntity:
+        """Minimal switch base for platform tests."""
+
+        def async_write_ha_state(self):
+            pass
+
+    mock_ha_components_switch.SwitchEntity = SwitchEntity
+
     # Selector classes (not mocks - need to be real classes with voluptuous support)
     class EntitySelectorConfig:
         def __init__(self, **kwargs):
@@ -198,6 +207,7 @@ def _setup_homeassistant_mocks():
     sys.modules["homeassistant.components"] = mock_ha_components
     sys.modules["homeassistant.components.light"] = mock_ha_components_light
     sys.modules["homeassistant.components.select"] = mock_ha_components_select
+    sys.modules["homeassistant.components.switch"] = mock_ha_components_switch
     sys.modules["homeassistant.config_entries"] = mock_ha_config_entries
     sys.modules["homeassistant.data_entry_flow"] = mock_ha_data_entry_flow
     sys.modules["homeassistant.helpers"] = mock_ha_helpers

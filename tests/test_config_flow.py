@@ -10,6 +10,7 @@ from custom_components.chameleon.const import (
     CONF_LIGHT_ENTITIES,
     CONF_MEDIA_PLAYER_ENTITY,
     CONF_NORMALIZE_BRIGHTNESS,
+    CONF_RANDOMIZE_COLOR_ASSIGNMENT,
     CONF_TRANSITION,
 )
 
@@ -170,3 +171,13 @@ class TestChameleonOptionsFlow:
         result = await flow.async_step_init({CONF_NORMALIZE_BRIGHTNESS: True})
 
         assert result["data"] == {CONF_NORMALIZE_BRIGHTNESS: True}
+
+    @pytest.mark.asyncio
+    async def test_save_randomize_color_assignment(self):
+        """The Random-scene shuffle toggle is stored in integration options."""
+        from custom_components.chameleon.config_flow import ChameleonOptionsFlow
+
+        flow = ChameleonOptionsFlow()
+        result = await flow.async_step_init({CONF_RANDOMIZE_COLOR_ASSIGNMENT: True})
+
+        assert result["data"] == {CONF_RANDOMIZE_COLOR_ASSIGNMENT: True}

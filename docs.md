@@ -1,5 +1,12 @@
 # Chameleon change log
 
+## 2026-09-23 — Random scene color assignment
+
+- Request: provide a toggle that changes the light-to-palette order each time Random chooses an image.
+- Implementation: added Randomize Color Assignment to the Chameleon setup and Configure options. When enabled, a Random invocation chooses an image and shuffles a copy of the configured light list. The shuffled list controls static palette assignment and animated starting-color order. A repeated Random invocation avoids reusing the previous order when more than one light is available. Named scenes and Album Art use the configured order. The chosen assignment survives transition or style reapplication of the active scene.
+- Validation: local tests cover unchanged configured light order, shuffled assignments, repeat selection, and single-light behavior. Live deployment and verification will be recorded after installation.
+- Recovery: disable the toggle in Configure to return Random to the configured order. No entity IDs, unique IDs, or controlled-light configuration are changed.
+
 ## 2026-09-23 — RGB normalization and output bounds
 
 - Request: add a Normalize Brightness toggle that changes extracted color values for brighter, more vibrant LED palettes while leaving the Home Assistant brightness setting alone; ensure every RGB service call stays within standard channel bounds.

@@ -9,12 +9,15 @@ A Home Assistant custom integration that applies colors from images or a media p
 - Refresh album art colors when the media player's artwork changes while that effect is active.
 - Choose static colors or animated transitions with the companion transition controls.
 - Enable **Normalize Brightness** in Chameleon's Configure dialog to turn extracted image colors into bright, vibrant LED colors without changing the light brightness setting.
+- Enable **Randomize Color Assignment** in Configure to shuffle which light receives each palette color whenever **Random** is selected. Named scenes and Album Art keep their configured light order.
 
 Album artwork is kept in memory and is limited to 10 MB per download. If artwork is unavailable, the last successfully applied light colors remain in place and the Chameleon light reports `last_error`.
 
 Normalize Brightness is off by default for existing setups. When enabled, each extracted RGB color keeps its hue, reaches full RGB value, and gains a saturation floor if it is muted. Neutral black and gray become white because they have no meaningful hue. The same adjustment is applied to colors between animation steps. Manual colors are left as chosen. Different LED models and hues can still appear to have different physical brightness; exact visual matching requires calibration for each light.
 
 All RGB channels are clamped to integer values from 0 through 255 before sending a light command, including animation and manual-color commands. This prevents out-of-range RGB service data. A bulb's narrower physical color gamut can still cause it to approximate a requested color.
+
+Randomize Color Assignment is off by default. With it on, each Random selection chooses an image and a new light-to-palette assignment. Static scenes assign one palette color per light; animated scenes use that shuffled light order for their starting colors. Reapplying the selected scene due to a transition/style change keeps the current assignment until Random is selected again.
 
 ## Install with HACS
 

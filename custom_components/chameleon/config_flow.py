@@ -20,8 +20,10 @@ from .const import (
     CONF_LIGHT_ENTITIES,
     CONF_MEDIA_PLAYER_ENTITY,
     CONF_NORMALIZE_BRIGHTNESS,
+    CONF_RANDOMIZE_COLOR_ASSIGNMENT,
     CONF_TRANSITION,
     DEFAULT_NORMALIZE_BRIGHTNESS,
+    DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT,
     DEFAULT_TRANSITION,
     DOMAIN,
     MAX_TRANSITION,
@@ -79,6 +81,7 @@ class ChameleonConfigFlow(ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Optional(CONF_MEDIA_PLAYER_ENTITY): EntitySelector(EntitySelectorConfig(domain="media_player")),
                 vol.Required(CONF_NORMALIZE_BRIGHTNESS, default=DEFAULT_NORMALIZE_BRIGHTNESS): BooleanSelector(),
+                vol.Required(CONF_RANDOMIZE_COLOR_ASSIGNMENT, default=DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT): BooleanSelector(),
             }
         )
 
@@ -109,11 +112,16 @@ class ChameleonOptionsFlow(OptionsFlowWithReload):
             CONF_NORMALIZE_BRIGHTNESS,
             self.config_entry.data.get(CONF_NORMALIZE_BRIGHTNESS, DEFAULT_NORMALIZE_BRIGHTNESS),
         )
+        randomize_color_assignment = self.config_entry.options.get(
+            CONF_RANDOMIZE_COLOR_ASSIGNMENT,
+            self.config_entry.data.get(CONF_RANDOMIZE_COLOR_ASSIGNMENT, DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT),
+        )
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
                 schema_key: EntitySelector(EntitySelectorConfig(domain="media_player")),
                 vol.Required(CONF_NORMALIZE_BRIGHTNESS, default=normalize_brightness): BooleanSelector(),
+                vol.Required(CONF_RANDOMIZE_COLOR_ASSIGNMENT, default=randomize_color_assignment): BooleanSelector(),
             }),
         )

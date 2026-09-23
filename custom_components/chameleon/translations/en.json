@@ -8,13 +8,15 @@
           "light_entities": "Light Entities",
           "transition": "Transition",
           "media_player_entity": "Album Art Media Player",
-          "normalize_brightness": "Normalize Brightness"
+          "normalize_brightness": "Normalize Brightness",
+          "randomize_color_assignment": "Randomize Color Assignment"
         },
         "data_description": {
           "light_entities": "The RGB lights to control with scene colors. Each light will receive a unique color from the image palette.",
           "transition": "Fade duration in seconds between colors. Set to 0 to disable animation (static scenes only).",
           "media_player_entity": "Optional media player whose current album artwork is used by the Album Art effect.",
-          "normalize_brightness": "Adjust extracted RGB colors for bright, vibrant LED output. This does not change the light brightness setting."
+          "normalize_brightness": "Adjust extracted RGB colors for bright, vibrant LED output. This does not change the light brightness setting.",
+          "randomize_color_assignment": "When Random is selected, shuffle which configured light receives each palette color. Named scenes keep their usual order."
         }
       }
     },
@@ -32,11 +34,13 @@
         "description": "Choose an optional album-art source and how extracted colors appear on LEDs.",
         "data": {
           "media_player_entity": "Album Art Media Player",
-          "normalize_brightness": "Normalize Brightness"
+          "normalize_brightness": "Normalize Brightness",
+          "randomize_color_assignment": "Randomize Color Assignment"
         },
         "data_description": {
           "media_player_entity": "Artwork changes update the configured Chameleon lights only while the Album Art effect is active.",
-          "normalize_brightness": "Change extracted RGB values to bright, vibrant colors with a similar output level. The Home Assistant brightness slider is unchanged."
+          "normalize_brightness": "Change extracted RGB values to bright, vibrant colors with a similar output level. The Home Assistant brightness slider is unchanged.",
+          "randomize_color_assignment": "Shuffle palette colors across the configured lights each time Random is selected. Named scenes and Album Art keep their original order."
         }
       }
     }

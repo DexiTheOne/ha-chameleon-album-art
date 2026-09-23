@@ -46,6 +46,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.network import get_url
 
+from .assignments import randomized_light_order
 from .color_extractor import (
     RGBColor,
     clamp_rgb_color,
@@ -60,10 +61,12 @@ from .const import (
     CONF_LIGHT_ENTITY,
     CONF_MEDIA_PLAYER_ENTITY,
     CONF_NORMALIZE_BRIGHTNESS,
+    CONF_RANDOMIZE_COLOR_ASSIGNMENT,
     CONF_TRANSITION,
     DEFAULT_BRIGHTNESS,
     DEFAULT_COLOR_COUNT,
     DEFAULT_NORMALIZE_BRIGHTNESS,
+    DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT,
     DEFAULT_TRANSITION,
     DEFAULT_TRANSITION_STYLE,
     DOMAIN,
@@ -106,9 +109,13 @@ async def async_setup_entry(
         CONF_NORMALIZE_BRIGHTNESS,
         entry.data.get(CONF_NORMALIZE_BRIGHTNESS, DEFAULT_NORMALIZE_BRIGHTNESS),
     )
+    randomize_color_assignment = entry.options.get(
+        CONF_RANDOMIZE_COLOR_ASSIGNMENT,
+        entry.data.get(CONF_RANDOMIZE_COLOR_ASSIGNMENT, DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT),
+    )
 
     async_add_entities(
-        [ChameleonLight(hass, entry, light_entities, initial_transition, media_player_entity, normalize_brightness)],
+        [ChameleonLight(hass, entry, light_entities, initial_transition, media_player_entity, normalize_brightness, randomize_color_assignment)],
         True,
     )
 
@@ -146,6 +153,7 @@ class ChameleonLight(LightEntity):
         initial_transition: float,
         media_player_entity: str | None = None,
         normalize_brightness: bool = DEFAULT_NORMALIZE_BRIGHTNESS,
+        randomize_color_assignment: bool = DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT,
     ) -> None:
         """Initialize the Chameleon light entity."""
         self.hass = hass
@@ -154,6 +162,8 @@ class ChameleonLight(LightEntity):
         self._initial_transition = initial_transition
         self._media_player_entity = media_player_entity
         self._normalize_brightness = normalize_brightness
+        self._randomize_color_assignment = randomize_color_assignment
+        self._random_assignment_order: list[str] | None = None
         self._remove_media_listener: Callable[[], None] | None = None
         self._last_artwork_key: str | None = None
         self._album_art_updated_at: datetime | None = None
@@ -294,6 +304,7 @@ class ChameleonLight(LightEntity):
             "applied_colors": self._applied_colors,
             "is_animating": manager.is_running(self._entry.entry_id) if manager else False,
             "normalize_brightness": self._normalize_brightness,
+            "randomize_color_assignment": self._randomize_color_assignment,
         }
 
         if self._media_player_entity:
@@ -454,7 +465,7 @@ class ChameleonLight(LightEntity):
             if self._manual_color is not None:
                 await self._apply_manual_color(self._manual_color)
             elif self._effect is not None:
-                await self._apply_effect(self._effect)
+                await self._apply_effect(self._effect, reuse_random_assignment=True)
 
     async def async_refresh_options(self) -> None:
         """Refresh the scene cache (effect_list source).
@@ -470,7 +481,7 @@ class ChameleonLight(LightEntity):
 
     # ── Internals ────────────────────────────────────────────────────────
 
-    async def _apply_effect(self, effect: str) -> None:
+    async def _apply_effect(self, effect: str, *, reuse_random_assignment: bool = False) -> None:
         """Apply a scene effect by name (handles Random and Off specially)."""
         # "Off" via the service path is equivalent to turn_off.
         if effect == SCENE_OFF:
@@ -481,7 +492,8 @@ class ChameleonLight(LightEntity):
             await self._apply_album_art()
             return
 
-        if effect == SCENE_RANDOM:
+        is_random_request = effect == SCENE_RANDOM
+        if is_random_request:
             if not self._cached_options:
                 self._last_error = "No scenes available for random selection"
                 _LOGGER.warning(self._last_error)
@@ -494,6 +506,11 @@ class ChameleonLight(LightEntity):
             self._last_error = f"Image not found for scene: {effect}"
             _LOGGER.error(self._last_error)
             return
+
+        if is_random_request and self._randomize_color_assignment:
+            self._random_assignment_order = randomized_light_order(self._light_entities, self._random_assignment_order)
+        elif not reuse_random_assignment:
+            self._random_assignment_order = None
 
         # Stop any running animation before re-applying. The animated path will
         # start a new one; the static path stays stopped.
@@ -614,6 +631,7 @@ class ChameleonLight(LightEntity):
             return
 
         self._effect = SCENE_ALBUM_ART
+        self._random_assignment_order = None
         self._last_effect = SCENE_ALBUM_ART
         self._manual_color = None
         self._extracted_palette = colors
@@ -652,6 +670,7 @@ class ChameleonLight(LightEntity):
     async def _apply_manual_color(self, rgb_color: RGBColor) -> None:
         """Apply a single RGB color directly to all underlying lights."""
         rgb_color = clamp_rgb_color(rgb_color)
+        self._random_assignment_order = None
         manager = self._get_animation_manager()
         if manager:
             await manager.stop(self._entry.entry_id)
@@ -711,7 +730,8 @@ class ChameleonLight(LightEntity):
 
     async def _apply_palette_static(self, colors: list[RGBColor], brightness: int) -> ApplyColorsResult:
         """Distribute an already-extracted palette across configured lights."""
-        light_colors = {entity: colors[i % len(colors)] for i, entity in enumerate(self._light_entities)}
+        light_order = self._random_assignment_order or self._light_entities
+        light_colors = {entity: colors[i % len(colors)] for i, entity in enumerate(light_order)}
         return await self._light_controller.apply_colors_to_lights(light_colors, brightness=brightness)
 
     async def _apply_colors_animated(self, image_path: Path, brightness: int) -> ApplyColorsResult:
@@ -751,7 +771,7 @@ class ChameleonLight(LightEntity):
         # Pre-flight availability so we don't animate dead lights.
         results: list[LightResult] = []
         available_lights: list[str] = []
-        for light_entity in self._light_entities:
+        for light_entity in self._random_assignment_order or self._light_entities:
             is_available, error, error_msg = self._light_controller.check_light_availability(light_entity)
             if is_available:
                 available_lights.append(light_entity)

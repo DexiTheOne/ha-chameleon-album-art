@@ -42,7 +42,6 @@ from homeassistant.components.light import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, callback
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
@@ -248,24 +247,6 @@ class ChameleonLight(LightEntity):
         """Use the selected filter for the next image or artwork palette."""
         self._interesting_colors = enabled
         self.async_write_ha_state()
-
-    def _source_has_real_artwork(self) -> bool:
-        """Reject Eversolo's song-ID fallback, which can serve default art."""
-        registry_entry = er.async_get(self.hass).async_get(self._media_player_entity)
-        if registry_entry is None or registry_entry.platform != "eversolo":
-            return True
-
-        coordinator = self.hass.data.get("eversolo", {}).get(registry_entry.config_entry_id)
-        data = getattr(coordinator, "data", None)
-        if not isinstance(data, dict):
-            return False
-        music = data.get("music_control_state") or {}
-        play_type = music.get("playType")
-        if play_type == 5:  # Internal player; song-ID fallback can be a default cover.
-            return bool((music.get("playingMusic") or {}).get("albumArt"))
-        if play_type == 6:  # Spotify Connect exposes a direct cover icon.
-            return bool((music.get("everSoloPlayInfo") or {}).get("icon"))
-        return False
 
     async def async_set_animation_enabled(self, enabled: bool) -> None:
         """Change continuous animation without changing the fade duration."""
@@ -680,10 +661,6 @@ class ChameleonLight(LightEntity):
         if media_state.state in ("off", "idle", "unavailable", "unknown") or _is_placeholder_art(entity_picture):
             self._last_error = "Configured media player has no current album artwork"
             return
-        if not self._source_has_real_artwork():
-            self._last_error = "Configured media player is showing fallback artwork"
-            return
-
         artwork_key = entity_picture
         if not force and artwork_key == self._last_artwork_key:
             return

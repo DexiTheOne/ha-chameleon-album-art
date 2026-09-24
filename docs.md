@@ -1,5 +1,29 @@
 # Chameleon change log
 
+## 2026-09-23 — Spread white across mostly white artwork
+
+- Request: for the supplied Beijing Music Radio image, show white on multiple light groups and red on only a few while Only Interesting Colors is on.
+- Affected objects: the shared album-art/image-scene palette filter and distribution, its focused tests, and README. The existing integration entry, entity IDs, seven-light order, scenes, and consumers remain unchanged.
+- Implementation: sample actual image pixels because palette extraction can omit white. When at least 70% of pixels are bright neutral white and no more than one accent hue survives filtering, assign white to most lights and the accent to at most two lights; a seven-light setup gets five white and two accent assignments. Keep the existing palette behavior for colorful images.
+- Validation: the supplied image measures 89.3% bright neutral white at sample size; a direct seven-light check gives five white and two red assignments. Python compilation, whitespace checks, and live validation are recorded below when complete.
+- Limits and rollback: sampling and hue filtering approximate the artwork. Reinstall the previous HACS revision and restart Home Assistant to restore the old behavior; turning off Only Interesting Colors bypasses the filter immediately.
+
+## 2026-09-23 — Accept Eversolo artwork from other playback sources
+
+- Request: use the album artwork now exposed by the DMP-A6 integration for sources such as Squeeze Connect.
+- Affected objects: Chameleon's Album Art artwork gate and README. The existing config entry, entity IDs, seven light order, scenes, and automation consumers are unchanged.
+- Finding and action: the live Chameleon light was on Album Art with `media_player.eversolo_dmp_a6` selected and reported `Configured media player is showing fallback artwork`, while that player was playing and exposed an `entity_picture`. Chameleon inspected Eversolo's private coordinator fields and accepted only its older internal-player and Spotify cover fields. Removed that source-specific gate so it accepts the media player's Home Assistant artwork field. Existing off/idle, absent-picture, recognized-placeholder, download-size, and palette checks remain.
+- Validation: local Python compilation and Git whitespace checks passed. The local Python environment has no pytest. After explicit authorization, pushed commit `ecc0cc7`, installed that exact HACS revision, and restarted Home Assistant. The live Eversolo was playing `FM974 Beijing Music Radio` with an `entity_picture`; Chameleon selected Album Art with no `last_error` and assigned `(255, 42, 42)` to all seven configured lights. Each member reported on with that color (the floor lamp reported `(255, 43, 43)`). A separate track or artwork change was not observed during verification.
+- Limits and rollback: An opaque Home Assistant proxy URL cannot reveal whether Eversolo serves a generic cover, so an unrecognized default image may be accepted. Reinstall HACS revision `7ebd799` and restart Home Assistant to restore the prior gate. A full Home Assistant backup was previously unavailable because no default backup password is configured.
+
+## 2026-09-23 — Allow white from neutral or mostly white artwork
+
+- Request: let black-and-white or mostly white source images use white LEDs while Only Interesting Colors is enabled, without showing white for colorful artwork.
+- Affected objects: the shared album-art and image-scene palette filter, its focused tests, and README. Existing switches, config entry, entity IDs, scenes, and light order are unchanged.
+- Implementation: retain the first bright neutral swatch when no useful hue survives, or when white is among the first two dominant swatches and at most one distinct hue survives. Keep its original dominance position and continue excluding white when several useful hues are present.
+- Validation: Python compilation, Git whitespace checks, and four direct palette behavior checks passed. The local Python environment lacks pytest, so the focused test suite could not run. No live Home Assistant deployment or entity readback was performed.
+- Limits and rollback: Palette order approximates image dominance; a small number of extracted swatches cannot measure exact white pixel coverage. Revert this filter change to restore the previous white exclusion, or turn off Only Interesting Colors to bypass filtering immediately.
+
 ## 2026-09-23 — Keep clear pastels and reduce skin-tone dominance
 
 - Request: the vivid-color filter removed an obviously blue album background yet allowed face colors to dominate other covers.

@@ -10,6 +10,8 @@ from PIL import Image
 
 from custom_components.chameleon.color_extractor import (
     _normalize_palette,
+    _sync_white_fraction,
+    balance_mostly_white_palette,
     clamp_rgb_color,
     normalize_palette_brightness,
     select_interesting_colors,
@@ -198,7 +200,32 @@ def test_interesting_colors_reject_neutrals_dark_and_pale_swatches():
     colors = [(255, 255, 255), (0, 0, 0), (35, 12, 12),
               (180, 178, 170), (255, 220, 220), (210, 40, 90), (35, 100, 170)]
     assert select_interesting_colors(colors) == [(210, 40, 90), (35, 100, 170)]
-    assert select_interesting_colors([(255, 255, 255)]) == []
+    assert select_interesting_colors([(255, 255, 255)]) == [(255, 255, 255)]
+
+
+def test_interesting_colors_allows_white_for_neutral_or_mostly_white_palettes():
+    assert select_interesting_colors([(12, 12, 12), (242, 243, 241), (90, 90, 90)]) == [(242, 243, 241)]
+    assert select_interesting_colors([(250, 250, 250), (30, 100, 180), (18, 18, 18)]) == [
+        (250, 250, 250), (30, 100, 180)
+    ]
+    assert select_interesting_colors([(255, 255, 255), (220, 40, 80), (30, 100, 180)]) == [
+        (220, 40, 80), (30, 100, 180)
+    ]
+
+
+def test_mostly_white_artwork_assigns_white_to_most_lights():
+    image = Image.new("RGB", (100, 100), "white")
+    for x in range(10):
+        for y in range(100):
+            image.putpixel((x, y), (225, 25, 40))
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    white_fraction = _sync_white_fraction(buffer.getvalue())
+    assert white_fraction >= 0.85
+    colors = balance_mostly_white_palette(select_interesting_colors([(225, 25, 40)]), white_fraction, 7)
+    assert colors == [(255, 255, 255)] * 5 + [(225, 25, 40)] * 2
+    assert balance_mostly_white_palette([(225, 25, 40)], white_fraction, 1) == [(255, 255, 255)]
+    assert balance_mostly_white_palette([(225, 25, 40)], 0.4, 7) == [(225, 25, 40)]
 
 
 def test_interesting_colors_keeps_pale_blue_without_repeating_coral():

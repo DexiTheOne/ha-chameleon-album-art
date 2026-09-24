@@ -44,12 +44,15 @@ def select_interesting_colors(colors: list[RGBColor]) -> list[RGBColor]:
     Muted warm skin tones and repeated shades of one hue should not crowd out
     the rest of an album cover's palette.
     """
-    result: list[RGBColor] = []
+    selected: list[tuple[int, RGBColor]] = []
     selected_hues: list[float] = []
-    for color in colors:
+    white_candidate: tuple[int, RGBColor] | None = None
+    for index, color in enumerate(colors):
         r, g, b = clamp_rgb_color(color)
         hue, saturation, value = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
         hue_degrees = hue * 360
+        if white_candidate is None and value >= 0.8 and saturation < 0.1:
+            white_candidate = (index, (r, g, b))
         if value < 0.18 or saturation < 0.15 or max(r, g, b) - min(r, g, b) < 30:
             continue
         # Typical muted tan/peach face colors are rarely useful LED accents.
@@ -58,9 +61,54 @@ def select_interesting_colors(colors: list[RGBColor]) -> list[RGBColor]:
             continue
         if any(min(abs(hue_degrees - chosen), 360 - abs(hue_degrees - chosen)) < 25 for chosen in selected_hues):
             continue
-        result.append((r, g, b))
+        selected.append((index, (r, g, b)))
         selected_hues.append(hue_degrees)
-    return result
+    # An achromatic cover can otherwise leave every light unchanged. A leading
+    # white swatch with at most one useful hue also represents a mostly white
+    # image; several distinct hues keep the usual white exclusion in place.
+    if white_candidate is not None and (not selected or (white_candidate[0] <= 1 and len(selected) <= 1)):
+        selected.append(white_candidate)
+        selected.sort(key=lambda item: item[0])
+    return [color for _, color in selected]
+
+
+def balance_mostly_white_palette(colors: list[RGBColor], white_fraction: float, light_count: int) -> list[RGBColor]:
+    """Give a mostly white image white lights while retaining a small color accent."""
+    if white_fraction < 0.7 or light_count < 1:
+        return colors
+    accents = [color for color in colors if not _is_bright_neutral(color)]
+    if len(accents) > 1:
+        return colors
+    if not accents or light_count == 1:
+        return [(255, 255, 255)] * light_count
+    accent_count = min(2, max(1, light_count - 1))
+    return [(255, 255, 255)] * (light_count - accent_count) + [accents[0]] * accent_count
+
+
+def _is_bright_neutral(color: RGBColor) -> bool:
+    r, g, b = clamp_rgb_color(color)
+    return min(r, g, b) >= 205 and max(r, g, b) - min(r, g, b) < 26
+
+
+def _sync_white_fraction(image_source: bytes | Path) -> float:
+    """Measure white image area independently of ColorThief's color palette."""
+    from PIL import Image
+
+    source = BytesIO(image_source) if isinstance(image_source, bytes) else image_source
+    with Image.open(source) as image:
+        image.thumbnail((128, 128))
+        rgb = image.convert("RGB")
+        pixels = list(rgb.getdata())
+    return sum(_is_bright_neutral(pixel) for pixel in pixels) / len(pixels) if pixels else 0.0
+
+
+async def extract_white_fraction(hass: HomeAssistant, image_source: bytes | Path) -> float:
+    """Sample white coverage without blocking Home Assistant's event loop."""
+    try:
+        return await hass.async_add_executor_job(_sync_white_fraction, image_source)
+    except Exception as err:
+        _LOGGER.warning("Unable to measure image white coverage: %s", type(err).__name__)
+        return 0.0
 
 
 def normalize_palette_brightness(colors: list[RGBColor]) -> list[RGBColor]:

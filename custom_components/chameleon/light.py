@@ -50,10 +50,12 @@ from homeassistant.helpers.network import get_url
 from .assignments import randomized_light_order
 from .color_extractor import (
     RGBColor,
+    balance_mostly_white_palette,
     clamp_rgb_color,
     extract_color_palette,
     extract_color_palette_bytes,
     extract_dominant_color,
+    extract_white_fraction,
     generate_gradient_path,
     normalize_palette_brightness,
     select_interesting_colors,
@@ -235,10 +237,11 @@ class ChameleonLight(LightEntity):
     def _get_runtime_transition_style(self) -> str:
         return _entry_data(self.hass, self._entry.entry_id).get("transition_style", DEFAULT_TRANSITION_STYLE)
 
-    def _prepare_palette(self, colors: list[RGBColor]) -> list[RGBColor]:
+    def _prepare_palette(self, colors: list[RGBColor], white_fraction: float = 0.0) -> list[RGBColor]:
         """Adjust source-image RGB values before static or animated output."""
         if self._interesting_colors:
             colors = select_interesting_colors(colors)
+            colors = balance_mostly_white_palette(colors, white_fraction, len(self._light_entities))
         if self._normalize_brightness:
             return normalize_palette_brightness(colors)
         return colors
@@ -679,10 +682,11 @@ class ChameleonLight(LightEntity):
             image_bytes,
             color_count=max(len(self._light_entities), DEFAULT_COLOR_COUNT),
         )
-        if not colors:
+        white_fraction = await extract_white_fraction(self.hass, image_bytes) if self._interesting_colors else 0.0
+        if not colors and white_fraction < 0.7:
             self._last_error = "Unable to extract colors from album artwork"
             return
-        colors = self._prepare_palette(colors)
+        colors = self._prepare_palette(colors, white_fraction)
         if not colors:
             self._last_error = "No vivid colors found in album artwork"
             return
@@ -805,11 +809,12 @@ class ChameleonLight(LightEntity):
             image_path,
             color_count=max(num_lights, DEFAULT_COLOR_COUNT),
         )
-        if not colors:
+        white_fraction = await extract_white_fraction(self.hass, image_path) if self._interesting_colors else 0.0
+        if not colors and white_fraction < 0.7:
             _LOGGER.error("Failed to extract color palette from %s", image_path)
             return ApplyColorsResult()
 
-        colors = self._prepare_palette(colors)
+        colors = self._prepare_palette(colors, white_fraction)
 
         if not colors:
             self._last_error = "No vivid colors found in image scene"
@@ -841,11 +846,12 @@ class ChameleonLight(LightEntity):
             image_path,
             color_count=DEFAULT_COLOR_COUNT,
         )
-        if not colors:
+        white_fraction = await extract_white_fraction(self.hass, image_path) if self._interesting_colors else 0.0
+        if not colors and white_fraction < 0.7:
             _LOGGER.error("Failed to extract color palette from %s", image_path)
             return ApplyColorsResult()
 
-        colors = self._prepare_palette(colors)
+        colors = self._prepare_palette(colors, white_fraction)
 
         if not colors:
             self._last_error = "No vivid colors found in image scene"

@@ -856,13 +856,12 @@ class ChameleonLight(LightEntity):
             entity: color for entity, color in light_colors.items()
             if wled_entry_id(self.hass, entity) not in eligible_entries
         }
-        result = await self._light_controller.apply_colors_to_lights(
+        ordinary_task = asyncio.create_task(self._light_controller.apply_colors_to_lights(
             ordinary_colors, brightness=brightness, transition=transition_time,
-        ) if ordinary_colors else ApplyColorsResult()
+        )) if ordinary_colors else None
+        result = ApplyColorsResult()
         if eligible_entries:
             fade_time = transition_time if transition_time is not None else self._light_controller.transition_time
-            if fade_time > 0:
-                await asyncio.sleep(fade_time)
             for entry_id, (entity, index) in eligible_entries.items():
                 members = {light: color for light, color in light_colors.items() if wled_entry_id(self.hass, light) == entry_id}
                 if await send_wled_palette(self.hass, entity, colors, index, brightness=brightness, transition=fade_time):
@@ -870,6 +869,9 @@ class ChameleonLight(LightEntity):
                 else:
                     fallback = await self._light_controller.apply_colors_to_lights(members, brightness=brightness, transition=0)
                     result.results.extend(fallback.results)
+        if ordinary_task:
+            ordinary_result = await ordinary_task
+            result.results.extend(ordinary_result.results)
         return result
 
     async def _apply_colors_animated(self, image_path: Path, brightness: int) -> ApplyColorsResult:
@@ -963,8 +965,9 @@ class ChameleonLight(LightEntity):
             )
 
         if send_palette and eligible_entries:
-            # Staggered loops may wait one phase before beginning their first fade.
-            await asyncio.sleep(transition * (2 if style != "synchronized" else 1))
+            # Staggered loops wait one phase before their first fade.
+            if style != "synchronized":
+                await asyncio.sleep(transition)
             for entry_id, (entity, index) in eligible_entries.items():
                 members = [light for light in self._random_assignment_order or self._light_entities if wled_entry_id(self.hass, light) == entry_id]
                 if await send_wled_palette(self.hass, entity, colors, index, brightness=brightness, transition=transition):

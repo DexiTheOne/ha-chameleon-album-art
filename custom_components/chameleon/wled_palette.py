@@ -89,7 +89,11 @@ async def send_wled_palette(
         if check_only:
             return entry.entry_id
         payload = {"seg": [
-            {"id": segment["id"], "col": [list(color) for color in palette]}
+            {
+                "id": segment["id"],
+                "col": [list(color) for color in palette],
+                **({"bm": 4} if isinstance(segment.get("bm"), int) else {}),
+            }
             for segment in segments
         ]}
         if brightness is not None:

@@ -1,5 +1,13 @@
 # Chameleon change log
 
+## 2026-09-25 — Synchronize outside-in WLED fades
+
+- Request: make WLED palette changes fade outside-in for the configured transition duration, and start that fade early enough to finish with the other lights.
+- Affected objects: WLED JSON segment blend mode and scene timing. The Chameleon entry, entities, light order, scene choices, and consumers remain unchanged.
+- Action: set WLED segment blend mode 4 (Outside-in) when supported, send the three image-derived color slots with one-call transition `tt`, and start that request alongside the ordinary light fade. For staggered animation, align it with the first animated fade. Effect and palette selections remain untouched.
+- Validation: Python compilation, diff checks, and live scene/Album Art verification are planned. The local Python environment lacks pytest.
+- Limits and rollback: the outside-in blend mode persists on WLED until changed. Reinstall HACS revision `8103716` and restart to restore the earlier request timing and blend mode behavior; WLED blend mode can then be returned to its previous setting in the device UI.
+
 ## 2026-09-25 — Fade WLED palette color changes
 
 - Request: the Floor Lamp's palette colors changed abruptly even with WLED's Fade palettes setting enabled.

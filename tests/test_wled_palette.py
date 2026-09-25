@@ -43,8 +43,8 @@ class _Session:
     def get(self, url, **_kwargs):
         if url.endswith("/state"):
             return _Response({"seg": [
-                {"id": 0, "fx": 65, "pal": self.palette_id},
-                {"id": 1, "fx": 65, "pal": self.palette_id},
+                {"id": 0, "fx": 65, "pal": self.palette_id, "bm": 0},
+                {"id": 1, "fx": 65, "pal": self.palette_id, "bm": 0},
             ]})
         return _Response([""] * 65 + ["Shift,Size,Rotation;;!;12"])
 
@@ -119,6 +119,7 @@ async def test_palette_update_uses_one_request_transition():
             hass, "light.one", [(255, 120, 30)], 0, transition=1.5
         ) == "wled-1"
     assert session.posts[0]["tt"] == 15
+    assert all(segment["bm"] == 4 for segment in session.posts[0]["seg"])
     assert all("fx" not in segment and "pal" not in segment for segment in session.posts[0]["seg"])
 
 

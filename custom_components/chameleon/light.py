@@ -720,7 +720,7 @@ class ChameleonLight(LightEntity):
         # for a staggered phase offset and otherwise starts with a long fade.
         result = await self._apply_palette_static(
             colors, self._brightness_pct,
-            transition=0 if self._animation_enabled else None,
+            transition=transition,
         )
 
         if result.all_failed:
@@ -729,7 +729,7 @@ class ChameleonLight(LightEntity):
             self._failed_lights = result.failed_lights
             return
         if self._animation_enabled and transition > 0:
-            await self._apply_palette_animated(colors, self._brightness_pct)
+            await self._apply_palette_animated(colors, self._brightness_pct, send_palette=False)
 
         self._effect = SCENE_ALBUM_ART
         self._last_effect = SCENE_ALBUM_ART
@@ -841,23 +841,35 @@ class ChameleonLight(LightEntity):
         """Distribute an already-extracted palette across configured lights."""
         light_order = self._random_assignment_order or self._light_entities
         light_colors = {entity: colors[i % len(colors)] for i, entity in enumerate(light_order)}
-        handled_entries: set[str] = set()
+        eligible_entries: dict[str, tuple[str, int]] = {}
         if self._send_palette_to_wled and three_palette_colors(colors):
             for index, entity in enumerate(light_order):
-                await send_wled_palette(self.hass, entity, colors, index, handled_entries, brightness)
+                entry_id = wled_entry_id(self.hass, entity)
+                if entry_id and entry_id not in eligible_entries and await send_wled_palette(
+                    self.hass, entity, colors, index, brightness=brightness, check_only=True,
+                ):
+                    eligible_entries[entry_id] = (entity, index)
         transition_time = transition
         if transition_time is None and not self._animation_enabled:
             transition_time = self._get_runtime_transition()
         ordinary_colors = {
             entity: color for entity, color in light_colors.items()
-            if wled_entry_id(self.hass, entity) not in handled_entries
+            if wled_entry_id(self.hass, entity) not in eligible_entries
         }
         result = await self._light_controller.apply_colors_to_lights(
             ordinary_colors, brightness=brightness, transition=transition_time,
         ) if ordinary_colors else ApplyColorsResult()
-        for entity in light_order:
-            if wled_entry_id(self.hass, entity) in handled_entries:
-                result.results.append(LightResult(entity_id=entity, success=True, color=light_colors[entity]))
+        if eligible_entries:
+            fade_time = transition_time if transition_time is not None else self._light_controller.transition_time
+            if fade_time > 0:
+                await asyncio.sleep(fade_time)
+            for entry_id, (entity, index) in eligible_entries.items():
+                members = {light: color for light, color in light_colors.items() if wled_entry_id(self.hass, light) == entry_id}
+                if await send_wled_palette(self.hass, entity, colors, index, brightness=brightness):
+                    result.results.extend(LightResult(entity_id=light, success=True, color=color) for light, color in members.items())
+                else:
+                    fallback = await self._light_controller.apply_colors_to_lights(members, brightness=brightness, transition=0)
+                    result.results.extend(fallback.results)
         return result
 
     async def _apply_colors_animated(self, image_path: Path, brightness: int) -> ApplyColorsResult:
@@ -885,17 +897,21 @@ class ChameleonLight(LightEntity):
         self._extracted_palette = colors
         return await self._apply_palette_animated(colors, brightness)
 
-    async def _apply_palette_animated(self, colors: list[RGBColor], brightness: int) -> ApplyColorsResult:
+    async def _apply_palette_animated(self, colors: list[RGBColor], brightness: int, *, send_palette: bool = True) -> ApplyColorsResult:
         """Animate an already-extracted palette across configured lights."""
         manager = self._get_animation_manager()
         if not manager:
             _LOGGER.error("AnimationManager not available")
             return ApplyColorsResult()
 
-        handled_entries: set[str] = set()
+        eligible_entries: dict[str, tuple[str, int]] = {}
         if self._send_palette_to_wled and three_palette_colors(colors):
             for index, entity in enumerate(self._random_assignment_order or self._light_entities):
-                await send_wled_palette(self.hass, entity, colors, index, handled_entries, brightness)
+                entry_id = wled_entry_id(self.hass, entity)
+                if entry_id and entry_id not in eligible_entries and await send_wled_palette(
+                    self.hass, entity, colors, index, brightness=brightness, check_only=True,
+                ):
+                    eligible_entries[entry_id] = (entity, index)
 
         transition = self._get_runtime_transition()
         style = self._get_runtime_transition_style()
@@ -907,7 +923,7 @@ class ChameleonLight(LightEntity):
         results: list[LightResult] = []
         available_lights: list[str] = []
         for light_entity in self._random_assignment_order or self._light_entities:
-            if wled_entry_id(self.hass, light_entity) in handled_entries:
+            if wled_entry_id(self.hass, light_entity) in eligible_entries:
                 results.append(LightResult(entity_id=light_entity, success=True, color=colors[0]))
                 continue
             is_available, error, error_msg = self._light_controller.check_light_availability(light_entity)
@@ -946,6 +962,18 @@ class ChameleonLight(LightEntity):
                 transition,
             )
 
+        if send_palette and eligible_entries:
+            # Staggered loops may wait one phase before beginning their first fade.
+            await asyncio.sleep(transition * (2 if style != "synchronized" else 1))
+            for entry_id, (entity, index) in eligible_entries.items():
+                members = [light for light in self._random_assignment_order or self._light_entities if wled_entry_id(self.hass, light) == entry_id]
+                if await send_wled_palette(self.hass, entity, colors, index, brightness=brightness):
+                    results.extend(LightResult(entity_id=light, success=True, color=colors[0]) for light in members)
+                else:
+                    fallback = await self._light_controller.apply_colors_to_lights(
+                        dict.fromkeys(members, colors[0]), brightness=brightness, transition=0,
+                    )
+                    results.extend(fallback.results)
         return ApplyColorsResult(results=results)
 
     async def _find_image_for_scene(self, scene_name: str) -> Path | None:

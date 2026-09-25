@@ -37,8 +37,9 @@ async def send_wled_palette(
     offset: int,
     sent_entries: set[str] | None = None,
     brightness: int | None = None,
+    check_only: bool = False,
 ) -> str | None:
-    """Update source colors only when every segment uses a configured palette."""
+    """Check or update a configured palette without changing its effect."""
     entity = er.async_get(hass).async_get(entity_id)
     if entity is None or not entity.config_entry_id:
         return None
@@ -74,6 +75,8 @@ async def send_wled_palette(
             sections = metadata.split(";") if isinstance(metadata, str) else []
             if segment.get("pal") not in (4, 5) or len(sections) < 3 or sections[2] != "!":
                 return None
+        if check_only:
+            return entry.entry_id
         payload = {"seg": [
             {"id": segment["id"], "col": [list(color) for color in palette]}
             for segment in segments

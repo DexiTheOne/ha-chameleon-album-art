@@ -1,3 +1,11 @@
+## 2026-09-25 — Correct native WLED blend selection
+
+- Request: multisegment WLED devices still show Fade when Outside In is selected, and the WLED style picker should include the eight one-dimensional modes shown in the device UI.
+- Affected objects: native WLED scene request, transition-style options and translations, and focused request tests. The existing Chameleon entry, configured lights/order, scenes, and consumers remain unchanged.
+- Finding and action: WLED's own interface writes the device-level JSON state field `bs` for transition style; Chameleon had written segment field `bm`, which is a different setting. The native transition request now writes root-level `bs` once per device and keeps the per-segment color assignments. The picker adds Fairy Dust, Swipe Right/Left, Push Right/Left, and Inside Out alongside Fade and Outside In, using WLED's documented UI values.
+- Validation: Python compilation, translation JSON parsing, and Git whitespace checks passed. The focused payload test now asserts root-level `bs` and no segment-level `bm`. Live deployment and device readback follow.
+- Limits and rollback: transition style is device-wide in WLED, so every segment of one device uses the same style. Reinstall the previous HACS revision `ee09f18` and restart to restore the prior behavior.
+
 ## 2026-09-25 — Native WLED scene transitions
 
 - Request: add a WLED transition mode and selectable native WLED blend, using the transition slider for scene and Album Art changes while leaving non-WLED lights as immediate color updates.

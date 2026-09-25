@@ -74,7 +74,16 @@ TRANSITION_STYLE_STAGGERED: Final = "staggered"
 TRANSITION_STYLE_WLED: Final = "wled"
 TRANSITION_STYLES: Final = [TRANSITION_STYLE_SYNC, TRANSITION_STYLE_STAGGERED, TRANSITION_STYLE_WLED]
 DEFAULT_TRANSITION_STYLE: Final = TRANSITION_STYLE_STAGGERED  # More natural-looking by default
-WLED_BLEND_STYLES: Final = {"outside_in": 4, "fade": 0}
+WLED_BLEND_STYLES: Final = {
+    "fade": 0,
+    "fairy_dust": 1,
+    "swipe_right": 2,
+    "swipe_left": 3,
+    "push_right": 16,
+    "push_left": 17,
+    "outside_in": 4,
+    "inside_out": 5,
+}
 DEFAULT_WLED_BLEND_STYLE: Final = "outside_in"
 
 # Brightness

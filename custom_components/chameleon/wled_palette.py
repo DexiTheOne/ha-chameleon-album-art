@@ -189,12 +189,12 @@ async def send_wled_transition(
                     [segment_colors[segment["id"]], *palette]
                     if segment["id"] in segment_colors else palette
                 )],
-                "bm": blend_mode,
             })
         payload = {
             "on": True,
             "bri": round(max(0, min(100, brightness)) * 255 / 100),
             "tt": round(max(0, min(65, transition)) * 10),
+            "bs": blend_mode,
             "seg": segment_payload,
         }
         async with session.post(f"http://{host}/json/state", json=payload, timeout=5) as response:

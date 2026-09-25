@@ -68,8 +68,14 @@
       "wled_blend_style": {
         "name": "WLED Transition Style",
         "state": {
+          "fade": "Fade",
+          "fairy_dust": "Fairy Dust",
+          "swipe_right": "Swipe Right",
+          "swipe_left": "Swipe Left",
+          "push_right": "Push Right",
+          "push_left": "Push Left",
           "outside_in": "Outside In",
-          "fade": "Fade"
+          "inside_out": "Inside Out"
         }
       }
     },

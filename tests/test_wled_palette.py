@@ -168,10 +168,11 @@ async def test_native_transition_updates_every_segment_without_changing_effect()
         assert await send_wled_transition(hass, "light.one", [(255, 120, 30)], 0, 80, 1.5, 4)
     payload = session.posts[0]
     assert payload["tt"] == 15
+    assert payload["bs"] == 4
     assert payload["bri"] == 204
     assert payload["on"] is True
     assert [segment["id"] for segment in payload["seg"]] == [0, 1]
-    assert all(segment["bm"] == 4 and segment["on"] is True for segment in payload["seg"])
+    assert all(segment["on"] is True and "bm" not in segment for segment in payload["seg"])
     assert all(segment["col"] == [[255, 120, 30]] * 3 for segment in payload["seg"])
     assert all("fx" not in segment and "pal" not in segment for segment in payload["seg"])
 
@@ -198,4 +199,5 @@ async def test_native_transition_keeps_each_configured_segment_color():
     segments = session.posts[0]["seg"]
     assert segments[0]["col"][0] == [255, 0, 0]
     assert segments[1]["col"][0] == [0, 0, 255]
-    assert all(segment["bm"] == 0 for segment in segments)
+    assert session.posts[0]["bs"] == 0
+    assert all("bm" not in segment for segment in segments)

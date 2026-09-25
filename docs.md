@@ -1,5 +1,13 @@
 # Chameleon change log
 
+## 2026-09-25 — Fill every WLED palette slot from the image
+
+- Request: when artwork yields fewer than three distinct colors, repeat its colors across all three WLED slots so older colors cannot remain visible; push and update the live installation.
+- Affected objects: WLED color-slot selection and focused tests. The Chameleon entry, switch, configured light order, scenes, and consumers are unchanged.
+- Action: a one-color image supplies that color to all three slots; a two-color image alternates its colors across the slots. Empty palettes still send nothing. WLED devices still need an already configured color-slot palette and palette-aware effect, and the JSON request leaves effect and palette settings alone.
+- Validation: local compilation, JSON parsing, whitespace checks, and five focused slot-filling cases passed; pytest is unavailable locally. Before deployment, live Album Art exposed one orange color `(255, 122, 38)`. The Floor Lamp already had a palette-aware effect (51) and Colors Only palette (5), but its three WLED slots were orange, purple, and blue, establishing the stale-color case for a live test without changing its effect. HACS installation and post-change readback remain pending.
+- Rollback: reinstall HACS revision `75f7966` to restore the prior three-distinct-color requirement; turn off Send Palette information to WLED to stop direct WLED requests.
+
 ## 2026-09-25 — Keep WLED colors faithful to artwork
 
 - Request: the current orange artwork left green and blue visible on WLED lights; skip palette requests for single-color artwork or devices without a configured palette, use only source-image colors, and preserve each device's effect.

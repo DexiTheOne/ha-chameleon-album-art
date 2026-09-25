@@ -1,4 +1,4 @@
-"""Send three distinct scene colors to a WLED device's JSON API."""
+"""Fill WLED color slots with colors from the current image."""
 
 from __future__ import annotations
 
@@ -14,9 +14,9 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def three_palette_colors(colors: list[RGBColor], offset: int = 0) -> list[RGBColor]:
-    """Use three distinct source swatches; never invent colors."""
+    """Fill three slots by repeating source swatches when necessary."""
     unique = list(dict.fromkeys(clamp_rgb_color(color) for color in colors))
-    if len(unique) < 3:
+    if not unique:
         return []
     return [unique[(offset + index) % len(unique)] for index in range(3)]
 

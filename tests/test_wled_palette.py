@@ -8,9 +8,12 @@ import pytest
 from custom_components.chameleon.wled_palette import send_wled_palette, three_palette_colors
 
 
-def test_three_palette_colors_requires_three_source_swatches():
-    assert three_palette_colors([(255, 120, 30)]) == []
-    assert three_palette_colors([(255, 120, 30), (255, 120, 30), (255, 100, 20)]) == []
+def test_three_palette_colors_repeats_source_swatches():
+    assert three_palette_colors([]) == []
+    assert three_palette_colors([(255, 120, 30)]) == [(255, 120, 30)] * 3
+    assert three_palette_colors([(255, 120, 30), (255, 120, 30), (255, 100, 20)]) == [
+        (255, 120, 30), (255, 100, 20), (255, 120, 30)
+    ]
     source = [(255, 120, 30), (255, 100, 20), (255, 80, 10)]
     assert three_palette_colors(source, 1) == [source[1], source[2], source[0]]
 
@@ -82,3 +85,19 @@ async def test_send_palette_skips_unconfigured_device():
             hass, "light.one", [(255, 120, 30), (255, 100, 20), (255, 80, 10)], 0
         ) is None
     assert session.posts == []
+
+
+@pytest.mark.asyncio
+async def test_single_source_color_replaces_all_three_slots():
+    hass = MagicMock()
+    hass.config_entries.async_get_entry.return_value = SimpleNamespace(
+        entry_id="wled-1", domain="wled", data={"host": "10.0.0.5"}
+    )
+    session = _Session()
+    with patch("custom_components.chameleon.wled_palette.er.async_get") as registry, patch(
+        "custom_components.chameleon.wled_palette.async_get_clientsession", return_value=session
+    ):
+        registry.return_value.async_get.return_value = SimpleNamespace(config_entry_id="wled-1")
+        assert await send_wled_palette(hass, "light.one", [(255, 120, 30)], 0) == "wled-1"
+    assert all(segment["col"] == [[255, 120, 30]] * 3 for segment in session.posts[0]["seg"])
+    assert all("fx" not in segment and "pal" not in segment for segment in session.posts[0]["seg"])

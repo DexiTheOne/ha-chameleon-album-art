@@ -851,9 +851,10 @@ class ChameleonLight(LightEntity):
             transition=transition_time,
         )
         if self._send_palette_to_wled:
+            sent_entries: set[str] = set()
             for index, entity in enumerate(light_order):
                 if entity in result.applied_colors:
-                    await send_wled_palette(self.hass, entity, colors, index)
+                    await send_wled_palette(self.hass, entity, colors, index, sent_entries)
         return result
 
     async def _apply_colors_animated(self, image_path: Path, brightness: int) -> ApplyColorsResult:
@@ -889,8 +890,9 @@ class ChameleonLight(LightEntity):
             return ApplyColorsResult()
 
         if self._send_palette_to_wled:
+            sent_entries: set[str] = set()
             for index, entity in enumerate(self._random_assignment_order or self._light_entities):
-                await send_wled_palette(self.hass, entity, colors, index)
+                await send_wled_palette(self.hass, entity, colors, index, sent_entries)
 
         transition = self._get_runtime_transition()
         style = self._get_runtime_transition_style()

@@ -1,5 +1,13 @@
 # Chameleon change log
 
+## 2026-09-25 — Keep WLED colors faithful to artwork
+
+- Request: the current orange artwork left green and blue visible on WLED lights; skip palette requests for single-color artwork or devices without a configured palette, use only source-image colors, and preserve each device's effect.
+- Affected objects: WLED palette selection and Chameleon's static and animated scene application. The existing integration entry, switch, light IDs, configured order, and consumers remain unchanged.
+- Finding and action: Album Art exposed one orange color, while the previous WLED helper generated green and blue to fill the other slots and forced WLED's Palette effect. The helper now requires three distinct extracted colors and never synthesizes hues. It sends colors only when every segment already has palette 4 or 5 and an effect whose WLED metadata explicitly uses palettes. Its JSON request changes only color slots and brightness. For eligible WLED devices, Chameleon skips its ordinary RGB calls and animation so the existing WLED effect stays selected; all other lights use the existing Home Assistant light path. The live switch was turned off and all five devices were returned to Solid with only the current orange in their color slots to clear the stale hues before deployment.
+- Validation: pending local focused checks, deployment, and live readback.
+- Limits and rollback: devices using another WLED palette type are treated as ineligible because those palettes do not use all three color slots. Reinstall HACS revision `210927a` to restore the previous behavior; leave the switch off to avoid palette requests.
+
 ## 2026-09-24 — Send scene colors to WLED
 
 - Request: add a toggle named Send Palette information to WLED and send three distinct colors per WLED light through the JSON API. Colors may repeat across different lights.

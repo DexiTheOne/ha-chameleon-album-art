@@ -211,6 +211,8 @@ def _setup_homeassistant_mocks():
     sys.modules["homeassistant.config_entries"] = mock_ha_config_entries
     sys.modules["homeassistant.data_entry_flow"] = mock_ha_data_entry_flow
     sys.modules["homeassistant.helpers"] = mock_ha_helpers
+    sys.modules["homeassistant.helpers.aiohttp_client"] = MagicMock()
+    sys.modules["homeassistant.helpers.entity_registry"] = MagicMock()
     sys.modules["homeassistant.helpers.entity_platform"] = mock_ha_helpers_entity_platform
     sys.modules["homeassistant.helpers.event"] = mock_ha_helpers_event
     sys.modules["homeassistant.helpers.selector"] = mock_ha_helpers_selector

@@ -89,7 +89,7 @@ from .const import (
 )
 from .helpers import get_chameleon_device_name, get_entity_base_name
 from .light_controller import ApplyColorsResult, LightController, LightResult
-from .wled_palette import send_wled_palette
+from .wled_palette import send_wled_palette, three_palette_colors, wled_entry_id
 
 if TYPE_CHECKING:
     from .animations import AnimationManager
@@ -815,8 +815,6 @@ class ChameleonLight(LightEntity):
                     brightness=brightness,
                     transition=self._get_runtime_transition() if not self._animation_enabled else None,
                 )
-                if self._send_palette_to_wled and result.all_succeeded:
-                    await send_wled_palette(self.hass, self._light_entities[0], [color], 0)
                 return result
             _LOGGER.error("Failed to extract dominant color from %s", image_path)
             return ApplyColorsResult()
@@ -843,18 +841,23 @@ class ChameleonLight(LightEntity):
         """Distribute an already-extracted palette across configured lights."""
         light_order = self._random_assignment_order or self._light_entities
         light_colors = {entity: colors[i % len(colors)] for i, entity in enumerate(light_order)}
+        handled_entries: set[str] = set()
+        if self._send_palette_to_wled and three_palette_colors(colors):
+            for index, entity in enumerate(light_order):
+                await send_wled_palette(self.hass, entity, colors, index, handled_entries, brightness)
         transition_time = transition
         if transition_time is None and not self._animation_enabled:
             transition_time = self._get_runtime_transition()
+        ordinary_colors = {
+            entity: color for entity, color in light_colors.items()
+            if wled_entry_id(self.hass, entity) not in handled_entries
+        }
         result = await self._light_controller.apply_colors_to_lights(
-            light_colors, brightness=brightness,
-            transition=transition_time,
-        )
-        if self._send_palette_to_wled:
-            sent_entries: set[str] = set()
-            for index, entity in enumerate(light_order):
-                if entity in result.applied_colors:
-                    await send_wled_palette(self.hass, entity, colors, index, sent_entries)
+            ordinary_colors, brightness=brightness, transition=transition_time,
+        ) if ordinary_colors else ApplyColorsResult()
+        for entity in light_order:
+            if wled_entry_id(self.hass, entity) in handled_entries:
+                result.results.append(LightResult(entity_id=entity, success=True, color=light_colors[entity]))
         return result
 
     async def _apply_colors_animated(self, image_path: Path, brightness: int) -> ApplyColorsResult:
@@ -889,10 +892,10 @@ class ChameleonLight(LightEntity):
             _LOGGER.error("AnimationManager not available")
             return ApplyColorsResult()
 
-        if self._send_palette_to_wled:
-            sent_entries: set[str] = set()
+        handled_entries: set[str] = set()
+        if self._send_palette_to_wled and three_palette_colors(colors):
             for index, entity in enumerate(self._random_assignment_order or self._light_entities):
-                await send_wled_palette(self.hass, entity, colors, index, sent_entries)
+                await send_wled_palette(self.hass, entity, colors, index, handled_entries, brightness)
 
         transition = self._get_runtime_transition()
         style = self._get_runtime_transition_style()
@@ -904,6 +907,9 @@ class ChameleonLight(LightEntity):
         results: list[LightResult] = []
         available_lights: list[str] = []
         for light_entity in self._random_assignment_order or self._light_entities:
+            if wled_entry_id(self.hass, light_entity) in handled_entries:
+                results.append(LightResult(entity_id=light_entity, success=True, color=colors[0]))
+                continue
             is_available, error, error_msg = self._light_controller.check_light_availability(light_entity)
             if is_available:
                 available_lights.append(light_entity)

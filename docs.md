@@ -24,6 +24,14 @@
 
 # Chameleon change log
 
+## 2026-09-25 — Fade one-LED WLED segments
+
+- Request: spatial WLED transition styles look poor on segments with only one LED; use Fade for those lights without changing the transition duration.
+- Affected objects: native WLED scene, album-art, turn-on, and turn-off requests. Existing Chameleon entry, entity IDs, configured order, scenes, and consumers remain unchanged.
+- Finding and action: the live Sunset Lamp has one LED and the Flood Lights have two one-LED segments; the Media Console has two 84-LED segments. WLED's `bs` style applies to the whole device, so Chameleon now sends Fade (`bs=0`) whenever any segment reports one LED, while preserving the selected `tt` duration. Other devices retain the selected style.
+- Validation: Python compilation and Git whitespace checks passed. A focused payload test checks one-LED fallback on scene and power-off requests. Local pytest collection lacks `voluptuous`. Live validation pending deployment.
+- Limits and rollback: mixed-length devices fade on every segment because WLED cannot set different transition styles per segment. Reinstall prior HACS revision `97147c16ea048e9f2d5ddb4483537316e429a62d` and restart to restore previous behavior.
+
 ## 2026-09-25 — Synchronize outside-in WLED fades
 
 - Request: make WLED palette changes fade outside-in for the configured transition duration, and start that fade early enough to finish with the other lights.

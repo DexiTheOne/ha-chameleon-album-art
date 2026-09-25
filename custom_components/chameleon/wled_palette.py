@@ -35,6 +35,18 @@ def three_palette_colors(colors: list[RGBColor], offset: int = 0) -> list[RGBCol
     return [unique[(offset + index) % len(unique)] for index in range(3)]
 
 
+def _transition_style(segments: list[dict], selected_style: int) -> int:
+    """Use fade when a device has a single-LED segment; WLED style is global."""
+    for segment in segments:
+        length = segment.get("len")
+        if type(length) is int and length == 1:
+            return 0
+        start, stop = segment.get("start"), segment.get("stop")
+        if length is None and type(start) is int and type(stop) is int and stop - start == 1:
+            return 0
+    return selected_style
+
+
 def wled_entry_id(hass: HomeAssistant, entity_id: str) -> str | None:
     """Find the WLED config entry owning a light entity."""
     entity = er.async_get(hass).async_get(entity_id)
@@ -194,7 +206,7 @@ async def send_wled_transition(
             "on": True,
             "bri": round(max(0, min(100, brightness)) * 255 / 100),
             "tt": round(max(0, min(65, transition)) * 10),
-            "bs": blend_mode,
+            "bs": _transition_style(segments, blend_mode),
             "seg": segment_payload,
         }
         async with session.post(f"http://{host}/json/state", json=payload, timeout=5) as response:
@@ -228,7 +240,7 @@ async def send_wled_power_off(
         payload = {
             "on": False,
             "tt": round(max(0, min(65, transition)) * 10),
-            "bs": blend_mode,
+            "bs": _transition_style(segments, blend_mode),
             "seg": [{"id": segment_id, "on": False} for segment_id in ids],
         }
         async with session.post(f"http://{host}/json/state", json=payload, timeout=5) as response:

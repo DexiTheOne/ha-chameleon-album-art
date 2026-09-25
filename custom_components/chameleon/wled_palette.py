@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from homeassistant.core import HomeAssistant
@@ -11,6 +12,19 @@ from homeassistant.helpers import entity_registry as er
 from .color_extractor import RGBColor, clamp_rgb_color
 
 _LOGGER = logging.getLogger(__name__)
+
+
+async def _read_json(session, url: str):
+    """Retry a brief empty WLED response during simultaneous light updates."""
+    for attempt in range(3):
+        try:
+            async with session.get(url, timeout=5) as response:
+                response.raise_for_status()
+                return await response.json()
+        except Exception:
+            if attempt == 2:
+                raise
+            await asyncio.sleep(0.1)
 
 
 def three_palette_colors(colors: list[RGBColor], offset: int = 0) -> list[RGBColor]:
@@ -56,15 +70,11 @@ async def send_wled_palette(
         return None
     try:
         session = async_get_clientsession(hass)
-        async with session.get(f"http://{host}/json/state", timeout=5) as response:
-            response.raise_for_status()
-            state = await response.json()
+        state = await _read_json(session, f"http://{host}/json/state")
         segments = state.get("seg", [])
         if not isinstance(segments, list) or not segments:
             return None
-        async with session.get(f"http://{host}/json/fxdata", timeout=5) as response:
-            response.raise_for_status()
-            effect_metadata = await response.json()
+        effect_metadata = await _read_json(session, f"http://{host}/json/fxdata")
         if not isinstance(effect_metadata, list):
             return None
         for segment in segments:

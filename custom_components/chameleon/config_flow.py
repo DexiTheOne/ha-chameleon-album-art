@@ -23,11 +23,13 @@ from .const import (
     CONF_MEDIA_PLAYER_ENTITY,
     CONF_NORMALIZE_BRIGHTNESS,
     CONF_RANDOMIZE_COLOR_ASSIGNMENT,
+    CONF_SEND_PALETTE_TO_WLED,
     CONF_TRANSITION,
     DEFAULT_ANIMATION_ENABLED,
     DEFAULT_NORMALIZE_BRIGHTNESS,
     DEFAULT_INTERESTING_COLORS,
     DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT,
+    DEFAULT_SEND_PALETTE_TO_WLED,
     DEFAULT_TRANSITION,
     DOMAIN,
     MAX_TRANSITION,
@@ -115,6 +117,10 @@ class ChameleonOptionsFlow(OptionsFlowWithReload):
             options[CONF_RANDOMIZE_COLOR_ASSIGNMENT] = self.config_entry.options.get(
                 CONF_RANDOMIZE_COLOR_ASSIGNMENT,
                 self.config_entry.data.get(CONF_RANDOMIZE_COLOR_ASSIGNMENT, DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT),
+            )
+            options[CONF_SEND_PALETTE_TO_WLED] = self.config_entry.options.get(
+                CONF_SEND_PALETTE_TO_WLED,
+                self.config_entry.data.get(CONF_SEND_PALETTE_TO_WLED, DEFAULT_SEND_PALETTE_TO_WLED),
             )
             return self.async_create_entry(title="", data=options)
 

@@ -51,6 +51,9 @@
       },
       "interesting_colors": {
         "name": "Only Interesting Colors"
+      },
+      "send_palette_to_wled": {
+        "name": "Send Palette information to WLED"
       }
     },
     "select": {

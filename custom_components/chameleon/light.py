@@ -68,6 +68,7 @@ from .const import (
     CONF_NORMALIZE_BRIGHTNESS,
     CONF_INTERESTING_COLORS,
     CONF_RANDOMIZE_COLOR_ASSIGNMENT,
+    CONF_SEND_PALETTE_TO_WLED,
     CONF_TRANSITION,
     DEFAULT_ANIMATION_ENABLED,
     DEFAULT_BRIGHTNESS,
@@ -75,6 +76,7 @@ from .const import (
     DEFAULT_NORMALIZE_BRIGHTNESS,
     DEFAULT_INTERESTING_COLORS,
     DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT,
+    DEFAULT_SEND_PALETTE_TO_WLED,
     DEFAULT_TRANSITION,
     DEFAULT_TRANSITION_STYLE,
     DOMAIN,
@@ -87,6 +89,7 @@ from .const import (
 )
 from .helpers import get_chameleon_device_name, get_entity_base_name
 from .light_controller import ApplyColorsResult, LightController, LightResult
+from .wled_palette import send_wled_palette
 
 if TYPE_CHECKING:
     from .animations import AnimationManager
@@ -135,9 +138,13 @@ async def async_setup_entry(
         CONF_RANDOMIZE_COLOR_ASSIGNMENT,
         entry.data.get(CONF_RANDOMIZE_COLOR_ASSIGNMENT, DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT),
     )
+    send_palette_to_wled = entry.options.get(
+        CONF_SEND_PALETTE_TO_WLED,
+        entry.data.get(CONF_SEND_PALETTE_TO_WLED, DEFAULT_SEND_PALETTE_TO_WLED),
+    )
 
     async_add_entities(
-        [ChameleonLight(hass, entry, light_entities, initial_transition, media_player_entity, normalize_brightness, randomize_color_assignment, interesting_colors)],
+        [ChameleonLight(hass, entry, light_entities, initial_transition, media_player_entity, normalize_brightness, randomize_color_assignment, interesting_colors, send_palette_to_wled)],
         True,
     )
 
@@ -177,6 +184,7 @@ class ChameleonLight(LightEntity):
         normalize_brightness: bool = DEFAULT_NORMALIZE_BRIGHTNESS,
         randomize_color_assignment: bool = DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT,
         interesting_colors: bool = DEFAULT_INTERESTING_COLORS,
+        send_palette_to_wled: bool = DEFAULT_SEND_PALETTE_TO_WLED,
     ) -> None:
         """Initialize the Chameleon light entity."""
         self.hass = hass
@@ -189,6 +197,7 @@ class ChameleonLight(LightEntity):
         self._media_player_entity = media_player_entity
         self._normalize_brightness = normalize_brightness
         self._interesting_colors = interesting_colors
+        self._send_palette_to_wled = send_palette_to_wled
         self._randomize_color_assignment = randomize_color_assignment
         self._random_assignment_order: list[str] | None = None
         self._remove_media_listener: Callable[[], None] | None = None
@@ -249,6 +258,11 @@ class ChameleonLight(LightEntity):
     def set_interesting_colors(self, enabled: bool) -> None:
         """Use the selected filter for the next image or artwork palette."""
         self._interesting_colors = enabled
+        self.async_write_ha_state()
+
+    def set_send_palette_to_wled(self, enabled: bool) -> None:
+        """Apply the JSON palette setting to subsequent scenes."""
+        self._send_palette_to_wled = enabled
         self.async_write_ha_state()
 
     async def async_set_animation_enabled(self, enabled: bool) -> None:
@@ -796,11 +810,14 @@ class ChameleonLight(LightEntity):
             if color:
                 color = self._prepare_palette([color])[0]
                 self._extracted_palette = [color]
-                return await self._light_controller.apply_colors_to_lights(
+                result = await self._light_controller.apply_colors_to_lights(
                     {self._light_entities[0]: color},
                     brightness=brightness,
                     transition=self._get_runtime_transition() if not self._animation_enabled else None,
                 )
+                if self._send_palette_to_wled and result.all_succeeded:
+                    await send_wled_palette(self.hass, self._light_entities[0], [color], 0)
+                return result
             _LOGGER.error("Failed to extract dominant color from %s", image_path)
             return ApplyColorsResult()
 
@@ -829,10 +846,15 @@ class ChameleonLight(LightEntity):
         transition_time = transition
         if transition_time is None and not self._animation_enabled:
             transition_time = self._get_runtime_transition()
-        return await self._light_controller.apply_colors_to_lights(
+        result = await self._light_controller.apply_colors_to_lights(
             light_colors, brightness=brightness,
             transition=transition_time,
         )
+        if self._send_palette_to_wled:
+            for index, entity in enumerate(light_order):
+                if entity in result.applied_colors:
+                    await send_wled_palette(self.hass, entity, colors, index)
+        return result
 
     async def _apply_colors_animated(self, image_path: Path, brightness: int) -> ApplyColorsResult:
         """Extract colors and start an animation across the configured lights."""
@@ -865,6 +887,10 @@ class ChameleonLight(LightEntity):
         if not manager:
             _LOGGER.error("AnimationManager not available")
             return ApplyColorsResult()
+
+        if self._send_palette_to_wled:
+            for index, entity in enumerate(self._random_assignment_order or self._light_entities):
+                await send_wled_palette(self.hass, entity, colors, index)
 
         transition = self._get_runtime_transition()
         style = self._get_runtime_transition_style()

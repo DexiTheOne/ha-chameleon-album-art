@@ -1,5 +1,13 @@
 # Chameleon change log
 
+## 2026-09-24 — Send scene colors to WLED
+
+- Request: add a toggle named Send Palette information to WLED and send three distinct colors per WLED light through the JSON API. Colors may repeat across different lights.
+- Affected objects: a new Chameleon switch, scene and album-art palette application, WLED JSON requests, option preservation, and translations. Existing Chameleon entity IDs, configured light order, scenes, and consumers are unchanged.
+- Actions: the switch defaults off and persists in config entry options. When on, Chameleon identifies configured WLED light entities through Home Assistant's entity registry and WLED config entries, then posts three colors to the segment identified by each WLED entity's unique ID after applying a scene. Each light gets a rotated set of source colors; missing distinct colors are filled with derived hues. Non-WLED lights continue through normal Home Assistant light calls. Manual color commands remain unchanged.
+- Validation: Python compilation, translation JSON parsing, and Git whitespace checks passed. The local Python has no pytest. Before deployment, the live Chameleon entry was loaded with the original seven lights, and Home Assistant's WLED entity registry confirmed segment IDs 0 and 1 for the two multisegment devices. A predeployment backup was attempted; Home Assistant rejected it because no default backup password is configured. Live deployment and physical WLED readback remain to be completed.
+- Limits and rollback: WLED entities without a numeric segment suffix in their unique ID are skipped. Network failures are logged without stopping the ordinary light command. Turn the switch off to stop JSON requests, or revert this change to remove the switch.
+
 ## 2026-09-23 — Spread white across mostly white artwork
 
 - Request: for the supplied Beijing Music Radio image, show white on multiple light groups and red on only a few while Only Interesting Colors is on.

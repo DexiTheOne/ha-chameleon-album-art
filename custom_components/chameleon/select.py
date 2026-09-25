@@ -17,6 +17,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import (
     CONF_LIGHT_ENTITIES,
     CONF_LIGHT_ENTITY,
+    CONF_TRANSITION_STYLE,
+    CONF_WLED_BLEND_STYLE,
     DEFAULT_TRANSITION_STYLE,
     DEFAULT_WLED_BLEND_STYLE,
     DOMAIN,
@@ -72,7 +74,8 @@ class ChameleonTransitionStyleSelect(SelectEntity):
         self._entry = entry
         self._light_entities = light_entities
         self._attr_options = list(TRANSITION_STYLES)
-        self._current_option: str = DEFAULT_TRANSITION_STYLE
+        saved = entry.options.get(CONF_TRANSITION_STYLE, DEFAULT_TRANSITION_STYLE)
+        self._current_option: str = saved if saved in TRANSITION_STYLES else DEFAULT_TRANSITION_STYLE
 
         # Seed runtime data so the light entity sees the right style immediately.
         _entry_data(hass, entry.entry_id)["transition_style"] = self._current_option
@@ -118,6 +121,9 @@ class ChameleonTransitionStyleSelect(SelectEntity):
         previous = self._current_option
         self._current_option = option
         _entry_data(self.hass, self._entry.entry_id)["transition_style"] = option
+        self.hass.config_entries.async_update_entry(
+            self._entry, options={**self._entry.options, CONF_TRANSITION_STYLE: option}
+        )
         _LOGGER.info("Transition style set to '%s' for %s", option, self._light_entities)
 
         manager = self._get_animation_manager()
@@ -143,7 +149,8 @@ class ChameleonWledBlendSelect(SelectEntity):
         self._entry = entry
         self._light_entities = light_entities
         self._attr_options = list(WLED_BLEND_STYLES)
-        self._current_option = DEFAULT_WLED_BLEND_STYLE
+        saved = entry.options.get(CONF_WLED_BLEND_STYLE, DEFAULT_WLED_BLEND_STYLE)
+        self._current_option = saved if saved in WLED_BLEND_STYLES else DEFAULT_WLED_BLEND_STYLE
         _entry_data(hass, entry.entry_id)["wled_blend_style"] = self._current_option
         base_name = get_entity_base_name(hass, light_entities)
         self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_wled_blend_style"
@@ -167,4 +174,7 @@ class ChameleonWledBlendSelect(SelectEntity):
             return
         self._current_option = option
         _entry_data(self.hass, self._entry.entry_id)["wled_blend_style"] = option
+        self.hass.config_entries.async_update_entry(
+            self._entry, options={**self._entry.options, CONF_WLED_BLEND_STYLE: option}
+        )
         self.async_write_ha_state()

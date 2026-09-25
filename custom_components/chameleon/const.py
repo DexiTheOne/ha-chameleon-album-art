@@ -28,6 +28,8 @@ DEFAULT_SEND_PALETTE_TO_WLED: Final = False
 CONF_RANDOMIZE_COLOR_ASSIGNMENT: Final = "randomize_color_assignment"
 DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT: Final = False
 CONF_TRANSITION: Final = "transition"
+CONF_TRANSITION_STYLE: Final = "transition_style"
+CONF_WLED_BLEND_STYLE: Final = "wled_blend_style"
 CONF_ANIMATION_ENABLED: Final = "animation_enabled"
 DEFAULT_ANIMATION_ENABLED: Final = True
 

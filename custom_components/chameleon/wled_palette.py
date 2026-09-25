@@ -203,3 +203,37 @@ async def send_wled_transition(
     except Exception as err:
         _LOGGER.warning("Could not transition WLED light %s: %s", entity_id, type(err).__name__)
         return False
+
+
+async def send_wled_power_off(
+    hass: HomeAssistant, entity_id: str, transition: float, blend_mode: int,
+) -> bool:
+    """Fade a WLED device and all its segments off using its native style."""
+    entity = er.async_get(hass).async_get(entity_id)
+    entry = hass.config_entries.async_get_entry(entity.config_entry_id) if entity and entity.config_entry_id else None
+    if entry is None or entry.domain != "wled":
+        return False
+    host = entry.data.get("host")
+    if not isinstance(host, str) or not host or any(char in host for char in "/@?#"):
+        return False
+    try:
+        session = async_get_clientsession(hass)
+        state = await _read_json(session, f"http://{host}/json/state")
+        segments = state.get("seg", [])
+        if not isinstance(segments, list) or not segments:
+            return False
+        ids = [segment.get("id") for segment in segments]
+        if not all(isinstance(segment_id, int) for segment_id in ids):
+            return False
+        payload = {
+            "on": False,
+            "tt": round(max(0, min(65, transition)) * 10),
+            "bs": blend_mode,
+            "seg": [{"id": segment_id, "on": False} for segment_id in ids],
+        }
+        async with session.post(f"http://{host}/json/state", json=payload, timeout=5) as response:
+            response.raise_for_status()
+        return True
+    except Exception as err:
+        _LOGGER.warning("Could not fade WLED light %s off: %s", entity_id, type(err).__name__)
+        return False

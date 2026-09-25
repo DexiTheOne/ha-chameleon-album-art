@@ -49,7 +49,7 @@ async def async_setup_entry(
     else:
         light_entities = [entry.data[CONF_LIGHT_ENTITY]]
 
-    initial_transition = entry.data.get(CONF_TRANSITION, DEFAULT_TRANSITION)
+    initial_transition = entry.options.get(CONF_TRANSITION, entry.data.get(CONF_TRANSITION, DEFAULT_TRANSITION))
 
     async_add_entities(
         [ChameleonTransitionNumber(hass, entry, light_entities, initial_transition)],
@@ -135,6 +135,9 @@ class ChameleonTransitionNumber(NumberEntity):
         self._transition = new_value
 
         _entry_data(self.hass, self._entry.entry_id)["transition"] = new_value
+        self.hass.config_entries.async_update_entry(
+            self._entry, options={**self._entry.options, CONF_TRANSITION: new_value}
+        )
 
         if new_value > 0:
             self._last_nonzero = new_value

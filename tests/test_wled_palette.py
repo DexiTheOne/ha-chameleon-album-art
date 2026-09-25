@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from custom_components.chameleon.wled_palette import send_wled_palette, send_wled_transition, three_palette_colors, wled_main_lights
+from custom_components.chameleon.wled_palette import send_wled_palette, send_wled_power_off, send_wled_transition, three_palette_colors, wled_main_lights
 
 
 def test_wled_main_lights_resolves_renamed_parent_once():
@@ -201,3 +201,21 @@ async def test_native_transition_keeps_each_configured_segment_color():
     assert segments[1]["col"][0] == [0, 0, 255]
     assert session.posts[0]["bs"] == 0
     assert all("bm" not in segment for segment in segments)
+
+
+@pytest.mark.asyncio
+async def test_native_power_off_uses_selected_style_and_duration_for_all_segments():
+    hass = MagicMock()
+    hass.config_entries.async_get_entry.return_value = SimpleNamespace(
+        entry_id="wled-1", domain="wled", data={"host": "10.0.0.5"}
+    )
+    session = _Session()
+    with patch("custom_components.chameleon.wled_palette.er.async_get") as registry, patch(
+        "custom_components.chameleon.wled_palette.async_get_clientsession", return_value=session
+    ):
+        registry.return_value.async_get.return_value = SimpleNamespace(config_entry_id="wled-1")
+        assert await send_wled_power_off(hass, "light.one", 1.5, 4)
+    assert session.posts == [{
+        "on": False, "tt": 15, "bs": 4,
+        "seg": [{"id": 0, "on": False}, {"id": 1, "on": False}],
+    }]

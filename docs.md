@@ -1,3 +1,11 @@
+## 2026-09-25 — Keep scene transitions and fade power changes
+
+- Request: repeated Random or named scene choices can appear to lose their transition, and the chosen transition should apply when Chameleon turns lights on and off.
+- Affected objects: Random scene selection, transition controls and options preservation, light power handling, and native WLED power requests. Existing Chameleon entry, entity IDs, configured light order, scenes, and consumers remain unchanged.
+- Finding and action: a Random request could select the scene already displayed, producing identical colors and no visible transition. Transition duration, mode, and WLED blend were runtime-only and reset after Home Assistant restarted. Random now excludes the current scene when alternatives exist; the controls save their values in entry options and the options flow preserves them. Power-off uses the transition slider; WLED mode sends one device-level `bs` and `tt` request with every segment off, while other modes send Home Assistant light-off calls with the slider duration. Turning on from off applies the chosen duration to the scene or manual color and avoids an extra parent-light command after a successful native WLED request.
+- Validation: Python compilation, JSON parsing, and Git whitespace checks passed. A focused WLED payload test was added. Local pytest collection is blocked by missing `voluptuous` and test dependencies. Live scene testing before this change showed three different named scenes applied in quick succession and the Media Console retained `bs=4`; no native WLED style reset was observed. Live deployment and power-transition readback follow.
+- Limits and rollback: if a named scene is selected twice or two scenes yield identical colors, WLED has no color change to animate. Visual timing cannot be measured through Home Assistant state alone. Reinstall the previous HACS revision `511f174` and restart to restore the prior behavior.
+
 ## 2026-09-25 — Correct native WLED blend selection
 
 - Request: multisegment WLED devices still show Fade when Outside In is selected, and the WLED style picker should include the eight one-dimensional modes shown in the device UI.

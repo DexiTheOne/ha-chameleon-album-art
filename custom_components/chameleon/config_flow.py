@@ -25,6 +25,8 @@ from .const import (
     CONF_RANDOMIZE_COLOR_ASSIGNMENT,
     CONF_SEND_PALETTE_TO_WLED,
     CONF_TRANSITION,
+    CONF_TRANSITION_STYLE,
+    CONF_WLED_BLEND_STYLE,
     DEFAULT_ANIMATION_ENABLED,
     DEFAULT_NORMALIZE_BRIGHTNESS,
     DEFAULT_INTERESTING_COLORS,
@@ -122,6 +124,9 @@ class ChameleonOptionsFlow(OptionsFlowWithReload):
                 CONF_SEND_PALETTE_TO_WLED,
                 self.config_entry.data.get(CONF_SEND_PALETTE_TO_WLED, DEFAULT_SEND_PALETTE_TO_WLED),
             )
+            for key in (CONF_TRANSITION, CONF_TRANSITION_STYLE, CONF_WLED_BLEND_STYLE):
+                if key in self.config_entry.options:
+                    options[key] = self.config_entry.options[key]
             return self.async_create_entry(title="", data=options)
 
         current_media_player = self.config_entry.options.get(

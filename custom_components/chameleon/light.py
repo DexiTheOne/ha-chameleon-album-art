@@ -92,7 +92,7 @@ from .const import (
 )
 from .helpers import get_chameleon_device_name, get_entity_base_name
 from .light_controller import ApplyColorsResult, LightController, LightResult
-from .wled_palette import send_wled_palette, send_wled_transition, three_palette_colors, wled_entry_id, wled_main_lights
+from .wled_palette import send_wled_palette, send_wled_power_off, send_wled_transition, three_palette_colors, wled_entry_id, wled_main_lights
 
 if TYPE_CHECKING:
     from .animations import AnimationManager
@@ -125,7 +125,7 @@ async def async_setup_entry(
     else:
         light_entities = [entry.data[CONF_LIGHT_ENTITY]]
 
-    initial_transition = entry.data.get(CONF_TRANSITION, DEFAULT_TRANSITION)
+    initial_transition = entry.options.get(CONF_TRANSITION, entry.data.get(CONF_TRANSITION, DEFAULT_TRANSITION))
     media_player_entity = entry.options.get(
         CONF_MEDIA_PLAYER_ENTITY,
         entry.data.get(CONF_MEDIA_PLAYER_ENTITY),
@@ -465,11 +465,11 @@ class ChameleonLight(LightEntity):
 
         # Reveal WLED devices only after their configured segments have received
         # the new color. Turning the parent on first can flash an old scene.
-        if not self._is_on:
+        if not self._is_on and self._get_runtime_transition_style() != TRANSITION_STYLE_WLED:
             for main_id in wled_main_lights(self.hass, self._light_entities):
                 try:
                     await self.hass.services.async_call(
-                        "light", "turn_on", {"entity_id": main_id}, blocking=True,
+                        "light", "turn_on", {"entity_id": main_id, "transition": self._get_runtime_transition()}, blocking=True,
                     )
                 except Exception as err:
                     _LOGGER.error("Failed to turn on WLED main light %s: %s", main_id, err)
@@ -483,27 +483,37 @@ class ChameleonLight(LightEntity):
         if manager:
             await manager.stop(self._entry.entry_id)
 
-        # transition=0 → instant off, ignoring any trailing fade duration
-        # the lights might inherit from the just-cancelled animation's last
-        # turn_on with transition=speed.
-        for light_entity in self._light_entities:
-            try:
-                await self.hass.services.async_call(
-                    "light",
-                    "turn_off",
-                    {"entity_id": light_entity, "transition": 0},
-                    blocking=True,
-                )
-            except Exception as e:
-                _LOGGER.error("Failed to turn off %s: %s", light_entity, e)
+        transition = self._get_runtime_transition()
+        style = self._get_runtime_transition_style()
 
-        for main_id in wled_main_lights(self.hass, self._light_entities):
+        async def turn_off_entity(entity_id: str) -> None:
             try:
                 await self.hass.services.async_call(
-                    "light", "turn_off", {"entity_id": main_id, "transition": 0}, blocking=True,
+                    "light", "turn_off", {"entity_id": entity_id, "transition": transition}, blocking=True,
                 )
             except Exception as err:
-                _LOGGER.error("Failed to turn off WLED main light %s: %s", main_id, err)
+                _LOGGER.error("Failed to turn off %s: %s", entity_id, err)
+
+        if style == TRANSITION_STYLE_WLED:
+            blend_style = _entry_data(self.hass, self._entry.entry_id).get("wled_blend_style", DEFAULT_WLED_BLEND_STYLE)
+            blend_mode = WLED_BLEND_STYLES.get(blend_style, WLED_BLEND_STYLES[DEFAULT_WLED_BLEND_STYLE])
+            devices: dict[str, str] = {}
+            for entity_id in self._light_entities:
+                entry_id = wled_entry_id(self.hass, entity_id)
+                if entry_id and entry_id not in devices:
+                    devices[entry_id] = entity_id
+            outcomes = await asyncio.gather(*(
+                send_wled_power_off(self.hass, entity_id, transition, blend_mode)
+                for entity_id in devices.values()
+            ))
+            ordinary = [entity_id for entity_id in self._light_entities if not wled_entry_id(self.hass, entity_id)]
+            failed = {entry_id for entry_id, succeeded in zip(devices, outcomes) if not succeeded}
+            fallback = [entity_id for entity_id in self._light_entities if wled_entry_id(self.hass, entity_id) in failed]
+            fallback.extend(main_id for main_id in wled_main_lights(self.hass, self._light_entities) if wled_entry_id(self.hass, main_id) in failed)
+            await asyncio.gather(*(turn_off_entity(entity_id) for entity_id in [*ordinary, *fallback]))
+        else:
+            await asyncio.gather(*(turn_off_entity(entity_id) for entity_id in self._light_entities))
+            await asyncio.gather(*(turn_off_entity(main_id) for main_id in wled_main_lights(self.hass, self._light_entities)))
 
         self._is_on = False
         self._effect = None
@@ -601,7 +611,10 @@ class ChameleonLight(LightEntity):
                 self._last_error = "No scenes available for random selection"
                 _LOGGER.warning(self._last_error)
                 return
-            effect = random.choice(random_options)
+            # A repeated choice has identical target colors, so no transition
+            # can be seen. Prefer a different scene when one is available.
+            choices = [name for name in random_options if name != self._effect] or random_options
+            effect = random.choice(choices)
             _LOGGER.info("Random scene selected: '%s'", effect)
 
         image_path = await self._find_image_for_scene(effect)
@@ -800,10 +813,16 @@ class ChameleonLight(LightEntity):
         if manager:
             await manager.stop(self._entry.entry_id)
 
-        result = await self._light_controller.apply_colors_to_lights(
-            dict.fromkeys(self._light_entities, rgb_color),
-            brightness=self._brightness_pct,
-        )
+        if not self._is_on and self._get_runtime_transition_style() == TRANSITION_STYLE_WLED:
+            result = await self._apply_palette_wled(
+                [rgb_color], dict.fromkeys(self._light_entities, rgb_color), self._brightness_pct,
+            )
+        else:
+            result = await self._light_controller.apply_colors_to_lights(
+                dict.fromkeys(self._light_entities, rgb_color),
+                brightness=self._brightness_pct,
+                transition=self._get_runtime_transition() if not self._is_on else None,
+            )
 
         if result.all_succeeded:
             self._manual_color = rgb_color
@@ -919,7 +938,7 @@ class ChameleonLight(LightEntity):
             for entity, index in devices.values()
         ]
         ordinary_task = asyncio.create_task(self._light_controller.apply_colors_to_lights(
-            ordinary, brightness=brightness, transition=0,
+            ordinary, brightness=brightness, transition=self._get_runtime_transition() if not self._is_on else 0,
         )) if ordinary else None
         outcomes = await asyncio.gather(*tasks)
         result = ApplyColorsResult()
@@ -930,6 +949,11 @@ class ChameleonLight(LightEntity):
             else:
                 fallback = await self._light_controller.apply_colors_to_lights(members, brightness=brightness, transition=0)
                 result.results.extend(fallback.results)
+                if not self._is_on:
+                    for main_id in wled_main_lights(self.hass, list(members)):
+                        await self.hass.services.async_call(
+                            "light", "turn_on", {"entity_id": main_id, "transition": self._get_runtime_transition()}, blocking=True,
+                        )
         if ordinary_task:
             result.results.extend((await ordinary_task).results)
         return result

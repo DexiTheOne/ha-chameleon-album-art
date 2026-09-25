@@ -8,6 +8,14 @@
 - Validation: Python compilation, translation JSON parsing, and Git whitespace checks passed. The local Python has no pytest. Before deployment, the live Chameleon entry was loaded with the original seven lights, and Home Assistant's WLED entity registry confirmed segment IDs 0 and 1 for the two multisegment devices. A predeployment backup was attempted; Home Assistant rejected it because no default backup password is configured. Live deployment and physical WLED readback remain to be completed. The first commit could not be pushed: sandbox DNS failed, then automatic approval review rejected a direct push to the remote main branch because deployment authorization did not clearly establish ownership or approve that mutation. Local GitHub CLI authentication also reports an invalid token.
 - Limits and rollback: the first configured entity for a WLED device determines that device's palette when several of its segment entities are selected. Network failures are logged without stopping the ordinary light command. Turn the switch off to stop JSON requests, or revert this change to remove the switch.
 
+## 2026-09-25 — Make the WLED palette active
+
+- Request: the WLED web UI still said the color palette was not used after receiving three colors.
+- Affected objects: WLED JSON requests only; the Chameleon device, switch, config entry, and configured light order remain the same.
+- Finding and action: live JSON readback confirmed three distinct colors on both segments of the Media Console and Flood Lights, but each segment still ran the Solid effect with palette ID 0. Solid ignores palettes. When the toggle is on, Chameleon now discovers WLED's Palette effect and selects it with the Colors Only palette (ID 5) while sending the three color slots to every segment.
+- Validation: before this adjustment, HACS installed revision `095b7ae`, the switch appeared off by default, a Rainbow Gradient scene produced distinct colors on all segments of both multisegment devices, and Chameleon reported no error. The Palette effect update still needs deployment and live readback.
+- Limits and rollback: WLED devices without a Palette effect are skipped and logged. Turning the switch off stops these JSON changes but does not restore a previous WLED effect automatically. Reinstall revision `095b7ae` to restore color-slot-only behavior.
+
 ## 2026-09-23 — Spread white across mostly white artwork
 
 - Request: for the supplied Beijing Music Radio image, show white on multiple light groups and red on only a few while Only Interesting Colors is on.

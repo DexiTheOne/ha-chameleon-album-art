@@ -63,10 +63,18 @@ async def send_wled_palette(
         if not segment_ids:
             _LOGGER.warning("WLED light %s reported no segments", entity_id)
             return
+        async with session.get(f"http://{host}/json/eff", timeout=5) as response:
+            response.raise_for_status()
+            effects = await response.json()
+        try:
+            palette_effect = effects.index("Palette")
+        except (AttributeError, ValueError):
+            _LOGGER.warning("WLED light %s does not provide the Palette effect", entity_id)
+            return
         async with session.post(
             f"http://{host}/json/state",
             json={"seg": [
-                {"id": segment_id, "col": [list(color) for color in palette]}
+                {"id": segment_id, "col": [list(color) for color in palette], "pal": 5, "fx": palette_effect}
                 for segment_id in segment_ids
             ]},
             timeout=5,

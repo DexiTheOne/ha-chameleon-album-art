@@ -44,6 +44,35 @@ def wled_entry_id(hass: HomeAssistant, entity_id: str) -> str | None:
     return entry.entry_id if entry is not None and entry.domain == "wled" else None
 
 
+def wled_main_lights(hass: HomeAssistant, light_entities: list[str]) -> list[str]:
+    """Find WLED main lights for configured segment lights, once per device.
+
+    WLED uses the same unique-ID stem for its main light (suffix _0) and
+    segment lights (suffix _1, _2, ...). Resolve through the registry so
+    user-renamed entity IDs continue to work.
+    """
+    registry = er.async_get(hass)
+    mains: list[str] = []
+    for entity_id in light_entities:
+        entity = registry.async_get(entity_id)
+        if entity is None or entity.platform != "wled" or not entity.config_entry_id:
+            continue
+        stem, separator, suffix = entity.unique_id.rpartition("_")
+        if not separator or not suffix.isdigit() or suffix == "0":
+            continue
+        main_id = registry.async_get_entity_id("light", "wled", f"{stem}_0")
+        main = registry.async_get(main_id) if main_id else None
+        if (
+            main is not None
+            and main.config_entry_id == entity.config_entry_id
+            and main.device_id == entity.device_id
+            and main_id not in light_entities
+            and main_id not in mains
+        ):
+            mains.append(main_id)
+    return mains
+
+
 async def send_wled_palette(
     hass: HomeAssistant,
     entity_id: str,
@@ -112,3 +141,65 @@ async def send_wled_palette(
     except Exception as err:
         _LOGGER.warning("Could not send palette to WLED light %s: %s", entity_id, type(err).__name__)
         return None
+
+
+async def send_wled_transition(
+    hass: HomeAssistant,
+    entity_id: str,
+    colors: list[RGBColor],
+    offset: int,
+    brightness: int,
+    transition: float,
+    blend_mode: int,
+    member_colors: dict[str, RGBColor] | None = None,
+) -> bool:
+    """Apply one native transition to every segment of a WLED device."""
+    entity = er.async_get(hass).async_get(entity_id)
+    entry = hass.config_entries.async_get_entry(entity.config_entry_id) if entity and entity.config_entry_id else None
+    if entry is None or entry.domain != "wled":
+        return False
+    host = entry.data.get("host")
+    if not isinstance(host, str) or not host or any(char in host for char in "/@?#"):
+        return False
+    palette = three_palette_colors(colors, offset)
+    if not palette:
+        return False
+    segment_colors: dict[int, RGBColor] = {}
+    for member_id, color in (member_colors or {}).items():
+        member = er.async_get(hass).async_get(member_id)
+        if member is None or member.config_entry_id != entry.entry_id:
+            continue
+        _, separator, suffix = member.unique_id.rpartition("_")
+        if separator and suffix.isdigit():
+            segment_colors[int(suffix)] = color
+    try:
+        session = async_get_clientsession(hass)
+        state = await _read_json(session, f"http://{host}/json/state")
+        segments = state.get("seg", [])
+        if not isinstance(segments, list) or not segments:
+            return False
+        segment_payload = []
+        for segment in segments:
+            if not isinstance(segment, dict) or not isinstance(segment.get("id"), int):
+                return False
+            segment_payload.append({
+                "id": segment["id"],
+                "on": True,
+                "col": [list(color) for color in three_palette_colors(
+                    [segment_colors[segment["id"]], *palette]
+                    if segment["id"] in segment_colors else palette
+                )],
+                "bm": blend_mode,
+            })
+        payload = {
+            "on": True,
+            "bri": round(max(0, min(100, brightness)) * 255 / 100),
+            "tt": round(max(0, min(65, transition)) * 10),
+            "seg": segment_payload,
+        }
+        async with session.post(f"http://{host}/json/state", json=payload, timeout=5) as response:
+            response.raise_for_status()
+        return True
+    except Exception as err:
+        _LOGGER.warning("Could not transition WLED light %s: %s", entity_id, type(err).__name__)
+        return False

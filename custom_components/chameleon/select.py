@@ -18,8 +18,10 @@ from .const import (
     CONF_LIGHT_ENTITIES,
     CONF_LIGHT_ENTITY,
     DEFAULT_TRANSITION_STYLE,
+    DEFAULT_WLED_BLEND_STYLE,
     DOMAIN,
     TRANSITION_STYLES,
+    WLED_BLEND_STYLES,
 )
 from .helpers import get_chameleon_device_name, get_entity_base_name
 
@@ -41,7 +43,7 @@ async def async_setup_entry(
         light_entities = [entry.data[CONF_LIGHT_ENTITY]]
 
     async_add_entities(
-        [ChameleonTransitionStyleSelect(hass, entry, light_entities)],
+        [ChameleonTransitionStyleSelect(hass, entry, light_entities), ChameleonWledBlendSelect(hass, entry, light_entities)],
         True,
     )
 
@@ -113,12 +115,56 @@ class ChameleonTransitionStyleSelect(SelectEntity):
             _LOGGER.warning("Unknown transition style: %s", option)
             return
 
+        previous = self._current_option
         self._current_option = option
         _entry_data(self.hass, self._entry.entry_id)["transition_style"] = option
         _LOGGER.info("Transition style set to '%s' for %s", option, self._light_entities)
 
         manager = self._get_animation_manager()
-        if manager and manager.is_running(self._entry.entry_id):
+        if previous != option and "wled" in (previous, option):
+            light = _entry_data(self.hass, self._entry.entry_id).get("chameleon_light")
+            if light is not None:
+                await light.async_reapply_current_scene()
+        elif manager and manager.is_running(self._entry.entry_id):
             manager.update_style(self._entry.entry_id, option)
 
+        self.async_write_ha_state()
+
+
+class ChameleonWledBlendSelect(SelectEntity):
+    """Select the native WLED blend used for scene changes."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "wled_blend_style"
+    _attr_icon = "mdi:gradient-horizontal"
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, light_entities: list[str]) -> None:
+        self.hass = hass
+        self._entry = entry
+        self._light_entities = light_entities
+        self._attr_options = list(WLED_BLEND_STYLES)
+        self._current_option = DEFAULT_WLED_BLEND_STYLE
+        _entry_data(hass, entry.entry_id)["wled_blend_style"] = self._current_option
+        base_name = get_entity_base_name(hass, light_entities)
+        self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_wled_blend_style"
+        self.entity_id = f"select.chameleon_{base_name}_wled_blend_style"
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, self._entry.entry_id)},
+            "name": get_chameleon_device_name(self.hass, self._light_entities),
+            "manufacturer": "Chameleon",
+            "model": "Scene Selector",
+        }
+
+    @property
+    def current_option(self) -> str:
+        return self._current_option
+
+    async def async_select_option(self, option: str) -> None:
+        if option not in WLED_BLEND_STYLES:
+            return
+        self._current_option = option
+        _entry_data(self.hass, self._entry.entry_id)["wled_blend_style"] = option
         self.async_write_ha_state()

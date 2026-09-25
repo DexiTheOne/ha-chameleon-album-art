@@ -79,6 +79,7 @@ from .const import (
     DEFAULT_SEND_PALETTE_TO_WLED,
     DEFAULT_TRANSITION,
     DEFAULT_TRANSITION_STYLE,
+    DEFAULT_WLED_BLEND_STYLE,
     DOMAIN,
     IMAGE_DIRECTORY,
     MAX_ALBUM_ART_BYTES,
@@ -86,10 +87,12 @@ from .const import (
     SCENE_OFF,
     SCENE_RANDOM,
     SUPPORTED_EXTENSIONS,
+    TRANSITION_STYLE_WLED,
+    WLED_BLEND_STYLES,
 )
 from .helpers import get_chameleon_device_name, get_entity_base_name
 from .light_controller import ApplyColorsResult, LightController, LightResult
-from .wled_palette import send_wled_palette, three_palette_colors, wled_entry_id
+from .wled_palette import send_wled_palette, send_wled_transition, three_palette_colors, wled_entry_id, wled_main_lights
 
 if TYPE_CHECKING:
     from .animations import AnimationManager
@@ -460,6 +463,17 @@ class ChameleonLight(LightEntity):
             await self._update_brightness_only()
         # else: bare turn_on while already on with no change → no-op
 
+        # Reveal WLED devices only after their configured segments have received
+        # the new color. Turning the parent on first can flash an old scene.
+        if not self._is_on:
+            for main_id in wled_main_lights(self.hass, self._light_entities):
+                try:
+                    await self.hass.services.async_call(
+                        "light", "turn_on", {"entity_id": main_id}, blocking=True,
+                    )
+                except Exception as err:
+                    _LOGGER.error("Failed to turn on WLED main light %s: %s", main_id, err)
+
         self._is_on = True
         self.async_write_ha_state()
 
@@ -482,6 +496,14 @@ class ChameleonLight(LightEntity):
                 )
             except Exception as e:
                 _LOGGER.error("Failed to turn off %s: %s", light_entity, e)
+
+        for main_id in wled_main_lights(self.hass, self._light_entities):
+            try:
+                await self.hass.services.async_call(
+                    "light", "turn_off", {"entity_id": main_id, "transition": 0}, blocking=True,
+                )
+            except Exception as err:
+                _LOGGER.error("Failed to turn off WLED main light %s: %s", main_id, err)
 
         self._is_on = False
         self._effect = None
@@ -602,7 +624,7 @@ class ChameleonLight(LightEntity):
         transition = self._get_runtime_transition()
         brightness = self._brightness_pct
 
-        if self._animation_enabled and transition > 0:
+        if self._animation_enabled and transition > 0 and self._get_runtime_transition_style() != TRANSITION_STYLE_WLED:
             result = await self._apply_colors_animated(image_path, brightness)
         else:
             result = await self._apply_colors_static(image_path, brightness)
@@ -615,7 +637,7 @@ class ChameleonLight(LightEntity):
             self._last_effect = effect
             self._applied_colors = result.applied_colors
             self._last_scene_change = datetime.now()
-            verb = "animation started" if self._animation_enabled and transition > 0 else "applied"
+            verb = "animation started" if self._animation_enabled and transition > 0 and self._get_runtime_transition_style() != TRANSITION_STYLE_WLED else "applied"
             _LOGGER.info("Scene '%s' %s successfully", effect, verb)
         elif result.all_failed:
             self._last_error = "Failed to apply colors to any lights"
@@ -728,7 +750,7 @@ class ChameleonLight(LightEntity):
             self._last_error = "Failed to apply album-art colors to any lights"
             self._failed_lights = result.failed_lights
             return
-        if self._animation_enabled and transition > 0:
+        if self._animation_enabled and transition > 0 and self._get_runtime_transition_style() != TRANSITION_STYLE_WLED:
             await self._apply_palette_animated(colors, self._brightness_pct, send_palette=False)
 
         self._effect = SCENE_ALBUM_ART
@@ -805,7 +827,7 @@ class ChameleonLight(LightEntity):
         """Extract and apply colors statically (no animation loop)."""
         num_lights = len(self._light_entities)
 
-        if num_lights == 1 and not self._interesting_colors:
+        if num_lights == 1 and not self._interesting_colors and self._get_runtime_transition_style() != TRANSITION_STYLE_WLED:
             color = await extract_dominant_color(self.hass, image_path)
             if color:
                 color = self._prepare_palette([color])[0]
@@ -841,6 +863,8 @@ class ChameleonLight(LightEntity):
         """Distribute an already-extracted palette across configured lights."""
         light_order = self._random_assignment_order or self._light_entities
         light_colors = {entity: colors[i % len(colors)] for i, entity in enumerate(light_order)}
+        if self._get_runtime_transition_style() == TRANSITION_STYLE_WLED:
+            return await self._apply_palette_wled(colors, light_colors, brightness)
         eligible_entries: dict[str, tuple[str, int]] = {}
         if self._send_palette_to_wled and three_palette_colors(colors):
             for index, entity in enumerate(light_order):
@@ -872,6 +896,42 @@ class ChameleonLight(LightEntity):
         if ordinary_task:
             ordinary_result = await ordinary_task
             result.results.extend(ordinary_result.results)
+        return result
+
+    async def _apply_palette_wled(
+        self, colors: list[RGBColor], light_colors: dict[str, RGBColor], brightness: int,
+    ) -> ApplyColorsResult:
+        """Start native transitions concurrently and set other lights immediately."""
+        devices: dict[str, tuple[str, int]] = {}
+        for index, entity in enumerate(light_colors):
+            entry_id = wled_entry_id(self.hass, entity)
+            if entry_id and entry_id not in devices:
+                devices[entry_id] = (entity, index)
+        ordinary = {entity: color for entity, color in light_colors.items() if not wled_entry_id(self.hass, entity)}
+        blend_style = _entry_data(self.hass, self._entry.entry_id).get("wled_blend_style", DEFAULT_WLED_BLEND_STYLE)
+        blend_mode = WLED_BLEND_STYLES.get(blend_style, WLED_BLEND_STYLES[DEFAULT_WLED_BLEND_STYLE])
+        tasks = [
+            asyncio.create_task(send_wled_transition(
+                self.hass, entity, colors, index, brightness,
+                self._get_runtime_transition(), blend_mode,
+                {member: color for member, color in light_colors.items() if wled_entry_id(self.hass, member) == wled_entry_id(self.hass, entity)},
+            ))
+            for entity, index in devices.values()
+        ]
+        ordinary_task = asyncio.create_task(self._light_controller.apply_colors_to_lights(
+            ordinary, brightness=brightness, transition=0,
+        )) if ordinary else None
+        outcomes = await asyncio.gather(*tasks)
+        result = ApplyColorsResult()
+        for entry_id, succeeded in zip(devices, outcomes):
+            members = {entity: color for entity, color in light_colors.items() if wled_entry_id(self.hass, entity) == entry_id}
+            if succeeded:
+                result.results.extend(LightResult(entity_id=entity, success=True, color=color) for entity, color in members.items())
+            else:
+                fallback = await self._light_controller.apply_colors_to_lights(members, brightness=brightness, transition=0)
+                result.results.extend(fallback.results)
+        if ordinary_task:
+            result.results.extend((await ordinary_task).results)
         return result
 
     async def _apply_colors_animated(self, image_path: Path, brightness: int) -> ApplyColorsResult:
@@ -946,6 +1006,19 @@ class ChameleonLight(LightEntity):
                         error=error,
                         error_message=error_msg,
                     )
+                )
+
+        # Animation tasks start asynchronously; prime WLED segments before
+        # their main light is revealed by the caller.
+        if not self._is_on:
+            wled_segments = {
+                entity: gradient[0]
+                for entity in available_lights
+                if wled_entry_id(self.hass, entity) and gradient
+            }
+            if wled_segments:
+                await self._light_controller.apply_colors_to_lights(
+                    wled_segments, brightness=brightness, transition=0,
                 )
 
         if available_lights:

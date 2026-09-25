@@ -61,7 +61,15 @@
         "name": "Transition Style",
         "state": {
           "synchronized": "Synchronized",
-          "staggered": "Staggered"
+          "staggered": "Staggered",
+          "wled": "WLED"
+        }
+      },
+      "wled_blend_style": {
+        "name": "WLED Transition Style",
+        "state": {
+          "outside_in": "Outside In",
+          "fade": "Fade"
         }
       }
     },

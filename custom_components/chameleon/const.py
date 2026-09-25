@@ -71,8 +71,11 @@ STATIC_TRANSITION_TIME: Final = 0.1
 # Transition styles (used by ChameleonTransitionStyleSelect)
 TRANSITION_STYLE_SYNC: Final = "synchronized"
 TRANSITION_STYLE_STAGGERED: Final = "staggered"
-TRANSITION_STYLES: Final = [TRANSITION_STYLE_SYNC, TRANSITION_STYLE_STAGGERED]
+TRANSITION_STYLE_WLED: Final = "wled"
+TRANSITION_STYLES: Final = [TRANSITION_STYLE_SYNC, TRANSITION_STYLE_STAGGERED, TRANSITION_STYLE_WLED]
 DEFAULT_TRANSITION_STYLE: Final = TRANSITION_STYLE_STAGGERED  # More natural-looking by default
+WLED_BLEND_STYLES: Final = {"outside_in": 4, "fade": 0}
+DEFAULT_WLED_BLEND_STYLE: Final = "outside_in"
 
 # Brightness
 # Brightness of 0 means "off" — equivalent to selecting the Off scene.

@@ -105,6 +105,24 @@ async def test_palette_preflight_does_not_write_colors():
 
 
 @pytest.mark.asyncio
+async def test_palette_update_uses_one_request_transition():
+    hass = MagicMock()
+    hass.config_entries.async_get_entry.return_value = SimpleNamespace(
+        entry_id="wled-1", domain="wled", data={"host": "10.0.0.5"}
+    )
+    session = _Session()
+    with patch("custom_components.chameleon.wled_palette.er.async_get") as registry, patch(
+        "custom_components.chameleon.wled_palette.async_get_clientsession", return_value=session
+    ):
+        registry.return_value.async_get.return_value = SimpleNamespace(config_entry_id="wled-1")
+        assert await send_wled_palette(
+            hass, "light.one", [(255, 120, 30)], 0, transition=1.5
+        ) == "wled-1"
+    assert session.posts[0]["tt"] == 15
+    assert all("fx" not in segment and "pal" not in segment for segment in session.posts[0]["seg"])
+
+
+@pytest.mark.asyncio
 async def test_single_source_color_replaces_all_three_slots():
     hass = MagicMock()
     hass.config_entries.async_get_entry.return_value = SimpleNamespace(

@@ -1,5 +1,13 @@
 # Chameleon change log
 
+## 2026-09-25 — Fade WLED palette color changes
+
+- Request: the Floor Lamp's palette colors changed abruptly even with WLED's Fade palettes setting enabled.
+- Affected objects: the WLED JSON palette request and Chameleon's scene and Album Art calls. Existing entities, configured light order, scenes, switch, and consumers remain unchanged.
+- Finding and action: the Floor Lamp's WLED state reported a 0.7 second default transition, while Chameleon used 1.5 seconds. The JSON request changed color slots without a per-request transition. Chameleon now sends WLED's `tt` field using the configured Chameleon transition duration after the ordinary light fade completes. The JSON request still does not select an effect or palette.
+- Validation: Python compilation, JSON/whitespace checks, and a focused request-payload test are planned. Live installation will be read back and checked. The local Python environment lacks pytest.
+- Limits and rollback: WLED controls how each effect displays transitions, so the visible result can vary by effect. Reinstall HACS revision `f86658e` and restart to restore the old JSON request; turning off Send Palette information to WLED stops these requests.
+
 ## 2026-09-25 — Send WLED colors after the scene fade
 
 - Request: when Album Art changes its source image or a scene is selected, send WLED palette information after the transition fade.

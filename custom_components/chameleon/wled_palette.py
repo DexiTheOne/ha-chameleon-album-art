@@ -52,6 +52,7 @@ async def send_wled_palette(
     sent_entries: set[str] | None = None,
     brightness: int | None = None,
     check_only: bool = False,
+    transition: float | None = None,
 ) -> str | None:
     """Check or update a configured palette without changing its effect."""
     entity = er.async_get(hass).async_get(entity_id)
@@ -93,6 +94,8 @@ async def send_wled_palette(
         ]}
         if brightness is not None:
             payload["bri"] = round(max(0, min(100, brightness)) * 255 / 100)
+        if transition is not None:
+            payload["tt"] = round(max(0, min(65, transition)) * 10)
         async with session.post(
             f"http://{host}/json/state",
             json=payload,

@@ -865,7 +865,7 @@ class ChameleonLight(LightEntity):
                 await asyncio.sleep(fade_time)
             for entry_id, (entity, index) in eligible_entries.items():
                 members = {light: color for light, color in light_colors.items() if wled_entry_id(self.hass, light) == entry_id}
-                if await send_wled_palette(self.hass, entity, colors, index, brightness=brightness):
+                if await send_wled_palette(self.hass, entity, colors, index, brightness=brightness, transition=fade_time):
                     result.results.extend(LightResult(entity_id=light, success=True, color=color) for light, color in members.items())
                 else:
                     fallback = await self._light_controller.apply_colors_to_lights(members, brightness=brightness, transition=0)
@@ -967,7 +967,7 @@ class ChameleonLight(LightEntity):
             await asyncio.sleep(transition * (2 if style != "synchronized" else 1))
             for entry_id, (entity, index) in eligible_entries.items():
                 members = [light for light in self._random_assignment_order or self._light_entities if wled_entry_id(self.hass, light) == entry_id]
-                if await send_wled_palette(self.hass, entity, colors, index, brightness=brightness):
+                if await send_wled_palette(self.hass, entity, colors, index, brightness=brightness, transition=transition):
                     results.extend(LightResult(entity_id=light, success=True, color=colors[0]) for light in members)
                 else:
                     fallback = await self._light_controller.apply_colors_to_lights(

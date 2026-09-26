@@ -106,7 +106,7 @@ class ChameleonSceneSelect(ChameleonSceneControl, SelectEntity):
     @property
     def current_option(self) -> str | None:
         light = self.chameleon_light
-        return light.effect if light is not None else None
+        return light.selected_scene if light is not None else None
 
     async def async_select_option(self, option: str) -> None:
         if option not in self.options:

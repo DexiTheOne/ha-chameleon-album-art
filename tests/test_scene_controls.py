@@ -26,7 +26,7 @@ def controls():
     entry = SimpleNamespace(entry_id="entry-1")
     light = SimpleNamespace(
         entity_id="light.renamed_chameleon", available=True,
-        effect="Aquatic", effect_list=["Random", "Album Art", "Aquatic", "Sunset"],
+        effect="Aquatic", selected_scene="Aquatic", effect_list=["Random", "Album Art", "Aquatic", "Sunset"],
         async_turn_on=AsyncMock(),
     )
     hass = MagicMock()
@@ -49,9 +49,10 @@ async def test_select_applies_scene_and_tracks_resolved_random(controls):
     await scene.async_select_option("Random")
     light.async_turn_on.assert_awaited_once_with(effect="Random")
     light.effect = "Sunset"
+    light.selected_scene = "Sunset"
     assert scene.current_option == "Sunset"
     light.effect = None
-    assert scene.current_option is None
+    assert scene.current_option == "Sunset"
     light.effect_list.append("New Image")
     assert scene.options[-1] == "New Image"
 

@@ -297,3 +297,35 @@ async def test_artwork_bytes_released_before_light_updates_palette_retained(grou
         ))
     white.assert_awaited_once_with(group.hass, b"artwork")
     assert group._extracted_palette == [(255, 0, 0)]
+
+
+@pytest.mark.parametrize("scene_name", ["Aquatic", "Beach Sunset", "Album Art"])
+async def test_scene_select_keeps_scene_during_off_and_restores_on(group, scene_name):
+    from custom_components.chameleon.select import ChameleonSceneSelect
+
+    group.hass.data[DOMAIN]["entry"]["chameleon_light"] = group
+    with patch("custom_components.chameleon.scene_control.get_entity_base_name", return_value="test"):
+        select = ChameleonSceneSelect(group.hass, group._entry, group._light_entities)
+    group._effect = scene_name
+    group._last_effect = scene_name
+    group._is_on = True
+    assert select.current_option == scene_name
+
+    await group.async_turn_off()
+    assert not group.is_on
+    assert group.effect is None
+    assert select.current_option == scene_name
+
+    async def apply_scene(effect):
+        group._effect = effect
+        group._last_effect = effect
+
+    with patch.object(group, "_apply_effect", new=AsyncMock(side_effect=apply_scene)) as apply:
+        await group.async_turn_on()
+    apply.assert_awaited_once_with(scene_name)
+    assert group.is_on
+    assert select.current_option == scene_name
+
+
+async def test_scene_select_has_no_selection_before_first_scene(group):
+    assert group.selected_scene is None

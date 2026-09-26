@@ -63,7 +63,7 @@ Based on [upstream Chameleon](https://github.com/MKSG-MugunthKumar/ha-chameleon)
 Each Chameleon device provides **Choose Random Scene** and **Scene** in its Controls section.
 
 - **Choose Random Scene** turns on the configured lights and applies a random image palette. Pressing it again chooses a different image when at least two scenes are available. It preserves the current brightness and transition settings and uses Chameleon's WLED main-light handling. With only one image, that scene is reused; with no images, the button is unavailable.
-- **Scene** mirrors the Chameleon light's effect list and current effect. Selecting an option applies it through the light's normal turn-on path. Random resolves to the actual chosen image name; manual color and off states follow the light's effect value. Image refreshes update the dropdown automatically.
+- **Scene** mirrors the Chameleon light's effect list and current effect. Selecting an option applies it through the light's normal turn-on path. Random resolves to the actual chosen image name; the selected scene stays visible while the light is off or showing a manual color, and a bare turn-on restores that scene. Image refreshes update the dropdown automatically.
 
 For the Common Area setup, the default entity IDs are `button.chameleon_common_area_choose_random_scene` and `select.chameleon_common_area_scene`. Dashboard cards and automation actions can use these in place of `script.random_colors` and the template scene select. Home Assistant may adjust an ID if it is already occupied. Existing helpers and their consumers can be migrated after installing the update.
 

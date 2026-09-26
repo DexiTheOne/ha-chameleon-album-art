@@ -347,6 +347,11 @@ class ChameleonLight(LightEntity):
         return self._effect
 
     @property
+    def selected_scene(self) -> str | None:
+        """Return the selected scene, retaining it while the light is off."""
+        return self._effect or self._last_effect
+
+    @property
     def effect_list(self) -> list[str]:
         """Return scene names available as effects.
 

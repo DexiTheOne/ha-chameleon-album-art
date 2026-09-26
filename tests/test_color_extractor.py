@@ -196,8 +196,8 @@ class TestRgbToHs:
         assert 40 < sat < 60  # Approximately 50% saturation
 
 
-@pytest.mark.parametrize("color", [(0, 1, 0), (3, 12, 5), (12, 12, 12), (220, 180, 150), (255, 255, 255)])
-def test_interesting_colors_only_rejects_pure_black(color):
+@pytest.mark.parametrize("color", [(0, 1, 0), (3, 12, 5), (220, 180, 150), (255, 255, 255)])
+def test_interesting_colors_retains_white_and_real_dark_hues(color):
     assert select_interesting_colors([(0, 0, 0), color]) == [color]
     assert select_interesting_colors([(0, 0, 0)]) == []
 
@@ -294,4 +294,10 @@ def test_black_white_artwork_quantized_palette_normalizes_to_white():
     # (116, 115, 116); it must not become a bright magenta accent.
     palette = [(218, 218, 218), (4, 4, 4), (87, 87, 87), (132, 132, 132),
                (124, 124, 124), (116, 115, 116), (60, 60, 60)]
-    assert normalize_palette_brightness(select_interesting_colors(palette)) == [(255, 255, 255)] * 7
+    assert select_interesting_colors(palette) == [(218, 218, 218)]
+    assert normalize_palette_brightness(select_interesting_colors(palette)) == [(255, 255, 255)]
+
+
+@pytest.mark.parametrize("color", [(0, 0, 0), (4, 4, 4), (12, 12, 12), (60, 60, 60), (132, 132, 132), (116, 115, 116)])
+def test_interesting_colors_rejects_dark_and_midtone_neutral_grays(color):
+    assert select_interesting_colors([color]) == []

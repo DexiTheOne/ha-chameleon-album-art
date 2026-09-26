@@ -38,8 +38,17 @@ def _normalize_palette(colors: list[RGBColor]) -> list[RGBColor]:
 
 
 def select_interesting_colors(colors: list[RGBColor]) -> list[RGBColor]:
-    """Keep every non-black source swatch in its original dominance order."""
-    return [normalized for color in colors if (normalized := clamp_rgb_color(color)) != (0, 0, 0)]
+    """Reject black and neutral gray while retaining white and real color."""
+    result = []
+    for color in colors:
+        normalized = clamp_rgb_color(color)
+        low, high = min(normalized), max(normalized)
+        if high == 0:
+            continue
+        if (high - low) / high <= 0.03 and not _is_bright_neutral(normalized):
+            continue
+        result.append(normalized)
+    return result
 
 
 def balance_mostly_white_palette(colors: list[RGBColor], white_fraction: float, light_count: int) -> list[RGBColor]:

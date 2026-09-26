@@ -806,7 +806,7 @@ class ChameleonLight(LightEntity):
             return
         colors = self._prepare_palette(colors, white_fraction)
         if not colors:
-            self._last_error = "No non-black colors found in album artwork"
+            self._last_error = "No interesting colors found in album artwork"
             return
 
         # A slow download/extraction must not apply colors for a cover that
@@ -916,7 +916,7 @@ class ChameleonLight(LightEntity):
         colors = self._prepare_palette(colors, white_fraction)
 
         if not colors:
-            self._last_error = "No non-black colors found in image scene"
+            self._last_error = "No interesting colors found in image scene"
             return ApplyColorsResult()
         self._extracted_palette = colors
         return await self._apply_palette_static(colors, brightness)

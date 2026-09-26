@@ -165,6 +165,7 @@ class ChameleonLight(LightEntity):
 
     _attr_has_entity_name = True
     _attr_name = None  # entity inherits the device name
+    _attr_icon = "mdi:palette-outline"
     _attr_supported_color_modes: ClassVar[set[ColorMode]] = {ColorMode.RGB}
     _attr_color_mode = ColorMode.RGB
     _attr_supported_features = LightEntityFeature.EFFECT

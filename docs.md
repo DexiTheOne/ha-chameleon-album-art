@@ -298,4 +298,4 @@
 
 - Request: choose and deploy a representative icon for the primary Chameleon light. Selected mdi:palette-outline to represent extracting artwork colors and applying lighting palettes.
 - Affected object: ChameleonLight's default icon only; entity identity, settings, scenes, and consumers remain unchanged. Current integration, registry, HACS source, and configuration references were inspected before deployment. The full backup from the preceding layout migration remains available.
-- Validation: Python compilation and whitespace review; deployment and live icon readback follow. Rollback: remove the default icon or reinstall source revision 7182c62.
+- Validation: Python compilation and whitespace review; installed source revision 09addca through HACS with source readback, restarted Home Assistant, and confirmed the live light exposes mdi:palette-outline. Restored the pre-deployment group scene and physical lights; live power, brightness, primary colors, and effects matched the baseline. Rollback: remove the default icon or reinstall source revision 7182c62.

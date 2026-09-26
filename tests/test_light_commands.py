@@ -63,3 +63,12 @@ async def test_all_excluded_can_save_manual_color_without_sending_commands(group
     assert group.is_on
     assert group.rgb_color == (255, 0, 0)
     assert group._last_error is None
+
+
+async def test_reapply_publishes_updated_group_state(group):
+    group._is_on = True
+    group._manual_color = (255, 0, 0)
+    group.async_write_ha_state = MagicMock()
+    await group.async_reapply_current_scene()
+    group.async_write_ha_state.assert_called_once()
+    assert list(group._applied_colors) == ["light.enabled"]

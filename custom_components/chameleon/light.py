@@ -521,6 +521,7 @@ class ChameleonLight(LightEntity):
                 await self._apply_manual_color(self._manual_color)
             elif self._effect is not None:
                 await self._apply_effect(self._effect, reuse_random_assignment=True)
+            self.async_write_ha_state()
 
     async def async_refresh_options(self) -> None:
         """Refresh the scene cache (effect_list source).

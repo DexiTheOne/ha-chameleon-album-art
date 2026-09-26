@@ -31,6 +31,7 @@ type ChameleonConfigEntry = ConfigEntry[None]
 SERVICE_APPLY_SCENE_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_SCENE_NAME): cv.string,
+        vol.Optional("entity_id"): cv.entity_ids,
         vol.Optional("brightness"): vol.All(vol.Coerce(int), vol.Range(min=MIN_BRIGHTNESS, max=MAX_BRIGHTNESS)),
         vol.Optional("transition"): vol.All(vol.Coerce(float), vol.Range(min=MIN_TRANSITION, max=MAX_TRANSITION)),
     }
@@ -204,7 +205,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         ``brightness`` and ``transition`` are optional; if omitted, the existing
         values are preserved. Brightness flows directly into ``light.turn_on``;
         transition must be set on the sibling number entity first because the
-        light entity doesn't own the animation tick rate.
+        light reads the transition from the shared runtime settings.
         """
         entity_ids: list[str] = call.data.get("entity_id", [])
         scene_name: str = call.data[ATTR_SCENE_NAME]

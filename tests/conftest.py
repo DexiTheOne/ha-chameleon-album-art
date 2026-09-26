@@ -200,8 +200,9 @@ def _setup_homeassistant_mocks():
     mock_ha_helpers_selector.NumberSelectorMode = NumberSelectorMode
 
     # Config validation mocks
-    mock_ha_helpers_cv.entity_ids = MagicMock
-    mock_ha_helpers_cv.string = MagicMock
+    mock_ha_helpers_cv.entity_ids = lambda value: [part.strip() for part in value.split(",")] if isinstance(value, str) else list(value)
+    mock_ha_helpers_cv.string = str
+    mock_ha_helpers.config_validation = mock_ha_helpers_cv
 
     # Setup module hierarchy
     sys.modules["homeassistant"] = mock_ha

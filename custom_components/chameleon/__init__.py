@@ -11,7 +11,6 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 
-from .animations import AnimationManager
 from .const import (
     ATTR_SCENE_NAME,
     DOMAIN,
@@ -49,9 +48,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ChameleonConfigEntry) ->
         _LOGGER.info("Creating Chameleon image directory: %s", IMAGE_DIRECTORY)
         await hass.async_add_executor_job(image_dir.mkdir, True, True)
 
-    if "animation_manager" not in hass.data[DOMAIN]:
-        hass.data[DOMAIN]["animation_manager"] = AnimationManager(hass)
-
     hass.data[DOMAIN].setdefault(entry.entry_id, {})["config"] = entry.data
 
     if not hass.services.has_service(DOMAIN, SERVICE_APPLY_SCENE):
@@ -80,7 +76,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
              ``transition_style``; renames the ``animation_speed`` key in
              entry.data to ``transition``.
     """
-    target_version = 4
+    target_version = 5
     _LOGGER.info(
         "Migrating Chameleon config entry %s from v%d to v%d",
         entry.entry_id,
@@ -155,6 +151,14 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         hass.config_entries.async_update_entry(entry, data=new_data, version=4)
 
+    if entry.version < 5:
+        retired = {f"{DOMAIN}_{entry.entry_id}_{suffix}" for suffix in ("animation", "transition_style")}
+        for ent in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
+            if ent.unique_id in retired:
+                entity_registry.async_remove(ent.entity_id)
+        options = {key: value for key, value in entry.options.items() if key not in ("animation_enabled", "transition_style")}
+        hass.config_entries.async_update_entry(entry, data={key: value for key, value in entry.data.items() if key not in ("animation_enabled", "transition_style")}, options=options, version=5)
+
     return True
 
 
@@ -164,12 +168,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ChameleonConfigEntry) -
 
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
-
-        remaining_entries = [key for key in hass.data[DOMAIN] if key != "animation_manager"]
-        if not remaining_entries:
-            animation_manager: AnimationManager = hass.data[DOMAIN].get("animation_manager")
-            if animation_manager:
-                await animation_manager.stop_all()
 
     return unload_ok
 
@@ -191,9 +189,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 
     - ``apply_scene``: targets the Chameleon light entity. Optionally accepts
       ``brightness`` and ``transition`` to set those values atomically with the
-      scene change. To start animation pass ``transition > 0``; to stop it
-      pass ``transition = 0`` (also expressible as a plain number.set_value
-      call).
+      scene change. Transition is the duration sent to WLED, including zero.
     - ``refresh_scenes``: rescans the image directory for every Chameleon
       config. No target needed.
 
@@ -254,7 +250,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         domain_data = hass.data.get(DOMAIN, {})
         refreshed = 0
         for key, entry_data in domain_data.items():
-            if key == "animation_manager" or not isinstance(entry_data, dict):
+            if not isinstance(entry_data, dict):
                 continue
             chameleon_light = entry_data.get("chameleon_light")
             if chameleon_light is not None:

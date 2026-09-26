@@ -208,6 +208,10 @@ def _setup_homeassistant_mocks():
     sys.modules["homeassistant.components.light"] = mock_ha_components_light
     sys.modules["homeassistant.components.select"] = mock_ha_components_select
     sys.modules["homeassistant.components.switch"] = mock_ha_components_switch
+    number_module = MagicMock()
+    number_module.NumberEntity = SwitchEntity
+    number_module.NumberMode.SLIDER = "slider"
+    sys.modules["homeassistant.components.number"] = number_module
     sys.modules["homeassistant.config_entries"] = mock_ha_config_entries
     sys.modules["homeassistant.data_entry_flow"] = mock_ha_data_entry_flow
     sys.modules["homeassistant.helpers"] = mock_ha_helpers

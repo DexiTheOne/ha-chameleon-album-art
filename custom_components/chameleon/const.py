@@ -28,14 +28,11 @@ DEFAULT_SEND_PALETTE_TO_WLED: Final = False
 CONF_RANDOMIZE_COLOR_ASSIGNMENT: Final = "randomize_color_assignment"
 DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT: Final = False
 CONF_TRANSITION: Final = "transition"
-CONF_TRANSITION_STYLE: Final = "transition_style"
 CONF_WLED_BLEND_STYLE: Final = "wled_blend_style"
-CONF_ANIMATION_ENABLED: Final = "animation_enabled"
-DEFAULT_ANIMATION_ENABLED: Final = True
 
-# Light hosts scene effects, select the transition style, number the transition
-# duration, and switches animation and Random-scene color assignment.
-PLATFORMS: Final = ["light", "select", "number", "switch"]
+# Scene effects live on the light and scene select; the button chooses Random.
+# Number, style select, and switches provide the other device controls.
+PLATFORMS: Final = ["light", "select", "number", "switch", "button"]
 
 # Services
 SERVICE_APPLY_SCENE: Final = "apply_scene"
@@ -58,11 +55,7 @@ MAX_ALBUM_ART_BYTES: Final = 10 * 1024 * 1024
 DEFAULT_COLOR_COUNT: Final = 8  # Number of colors to extract for palette
 DEFAULT_QUALITY: Final = 10  # Color extraction quality (1 = highest, 10 = fastest)
 
-# Animation transition
-# A "transition" is the seconds-long fade duration between successive scene
-# colors. Transition of 0 applies a scene immediately and stops the
-# animation loop. Range chosen for usable slider precision: 100 positions over
-# 0-10s with 0.1s step. 10s is enough for most ambient-lighting use cases.
+# Native WLED transition duration in seconds. Zero is sent unchanged.
 MIN_TRANSITION: Final = 0
 MAX_TRANSITION: Final = 10
 
@@ -70,12 +63,6 @@ MAX_TRANSITION: Final = 10
 # scene application (when transition = 0). Kept short for snappy feel.
 STATIC_TRANSITION_TIME: Final = 0.1
 
-# Transition styles (used by ChameleonTransitionStyleSelect)
-TRANSITION_STYLE_SYNC: Final = "synchronized"
-TRANSITION_STYLE_STAGGERED: Final = "staggered"
-TRANSITION_STYLE_WLED: Final = "wled"
-TRANSITION_STYLES: Final = [TRANSITION_STYLE_SYNC, TRANSITION_STYLE_STAGGERED, TRANSITION_STYLE_WLED]
-DEFAULT_TRANSITION_STYLE: Final = TRANSITION_STYLE_STAGGERED  # More natural-looking by default
 WLED_BLEND_STYLES: Final = {
     "fade": 0,
     "fairy_dust": 1,

@@ -13,7 +13,7 @@ def test_wled_main_lights_resolves_renamed_parent_once():
     entries = {
         "light.segment_1": SimpleNamespace(platform="wled", config_entry_id="entry", device_id="device", unique_id="mac_1"),
         "light.segment_2": SimpleNamespace(platform="wled", config_entry_id="entry", device_id="device", unique_id="mac_2"),
-        "light.renamed_parent": SimpleNamespace(platform="wled", config_entry_id="entry", device_id="device", unique_id="mac_0"),
+        "light.renamed_parent": SimpleNamespace(platform="wled", config_entry_id="entry", device_id="device", unique_id="mac"),
     }
     with patch("custom_components.chameleon.wled_palette.er.async_get") as get_registry:
         registry = get_registry.return_value
@@ -157,7 +157,8 @@ async def test_single_source_color_replaces_all_three_slots():
 
 
 @pytest.mark.asyncio
-async def test_native_transition_updates_every_segment_without_changing_effect():
+@pytest.mark.parametrize("duration, expected_tt", [(0, 0), (1.5, 15)])
+async def test_native_transition_updates_every_segment_without_changing_effect(duration, expected_tt):
     hass = MagicMock()
     hass.config_entries.async_get_entry.return_value = SimpleNamespace(
         entry_id="wled-1", domain="wled", data={"host": "10.0.0.5"}
@@ -167,9 +168,9 @@ async def test_native_transition_updates_every_segment_without_changing_effect()
         "custom_components.chameleon.wled_palette.async_get_clientsession", return_value=session
     ):
         registry.return_value.async_get.return_value = SimpleNamespace(config_entry_id="wled-1")
-        assert await send_wled_transition(hass, "light.one", [(255, 120, 30)], 0, 80, 1.5, 4)
+        assert await send_wled_transition(hass, "light.one", [(255, 120, 30)], 0, 80, duration, 4)
     payload = session.posts[0]
-    assert payload["tt"] == 15
+    assert payload["tt"] == expected_tt
     assert payload["bs"] == 4
     assert payload["bri"] == 204
     assert payload["on"] is True

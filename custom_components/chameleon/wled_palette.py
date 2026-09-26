@@ -10,6 +10,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import entity_registry as er
 
 from .color_extractor import RGBColor, clamp_rgb_color
+from .entity_controls import wled_segment_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -59,8 +60,8 @@ def wled_entry_id(hass: HomeAssistant, entity_id: str) -> str | None:
 def wled_main_lights(hass: HomeAssistant, light_entities: list[str]) -> list[str]:
     """Find WLED main lights for configured segment lights, once per device.
 
-    WLED uses the same unique-ID stem for its main light (suffix _0) and
-    segment lights (suffix _1, _2, ...). Resolve through the registry so
+    WLED uses the same unique-ID stem for its main light (MAC address alone) and
+    segment lights (suffix _0, _1, _2, ...). Resolve through the registry so
     user-renamed entity IDs continue to work.
     """
     registry = er.async_get(hass)
@@ -70,9 +71,9 @@ def wled_main_lights(hass: HomeAssistant, light_entities: list[str]) -> list[str
         if entity is None or entity.platform != "wled" or not entity.config_entry_id:
             continue
         stem, separator, suffix = entity.unique_id.rpartition("_")
-        if not separator or not suffix.isdigit() or suffix == "0":
+        if not separator or not suffix.isdigit():
             continue
-        main_id = registry.async_get_entity_id("light", "wled", f"{stem}_0")
+        main_id = registry.async_get_entity_id("light", "wled", stem)
         main = registry.async_get(main_id) if main_id else None
         if (
             main is not None
@@ -164,6 +165,8 @@ async def send_wled_transition(
     transition: float,
     blend_mode: int,
     member_colors: dict[str, RGBColor] | None = None,
+    member_brightness: dict[str, float] | None = None,
+    send_palette: bool = True,
 ) -> bool:
     """Apply one native transition to every segment of a WLED device."""
     entity = er.async_get(hass).async_get(entity_id)
@@ -177,13 +180,16 @@ async def send_wled_transition(
     if not palette:
         return False
     segment_colors: dict[int, RGBColor] = {}
+    segment_brightness = {}
     for member_id, color in (member_colors or {}).items():
         member = er.async_get(hass).async_get(member_id)
         if member is None or member.config_entry_id != entry.entry_id:
             continue
-        _, separator, suffix = member.unique_id.rpartition("_")
-        if separator and suffix.isdigit():
-            segment_colors[int(suffix)] = color
+        segment_id = wled_segment_id(member)
+        if segment_id is not None:
+            segment_colors[segment_id] = color
+            if member_brightness is not None:
+                segment_brightness[segment_id] = member_brightness.get(member_id, brightness)
     try:
         session = async_get_clientsession(hass)
         state = await _read_json(session, f"http://{host}/json/state")
@@ -194,17 +200,23 @@ async def send_wled_transition(
         for segment in segments:
             if not isinstance(segment, dict) or not isinstance(segment.get("id"), int):
                 return False
+            if member_colors is not None and segment["id"] not in segment_colors:
+                continue
             segment_payload.append({
                 "id": segment["id"],
-                "on": True,
-                "col": [list(color) for color in three_palette_colors(
-                    [segment_colors[segment["id"]], *palette]
-                    if segment["id"] in segment_colors else palette
+                "on": segment_brightness.get(segment["id"], brightness) > 0,
+                **({"bri": round(segment_brightness[segment["id"]] * 255 / 100)} if segment["id"] in segment_brightness else {}),
+                "col": [list(color) for color in (
+                    three_palette_colors([segment_colors[segment["id"]], *palette]
+                                         if segment["id"] in segment_colors else palette)
+                    if send_palette else [segment_colors.get(segment["id"], palette[0])]
                 )],
             })
+        if not segment_payload:
+            return False
         payload = {
             "on": True,
-            "bri": round(max(0, min(100, brightness)) * 255 / 100),
+            "bri": 255 if member_brightness is not None else round(max(0, min(100, brightness)) * 255 / 100),
             "tt": round(max(0, min(65, transition)) * 10),
             "bs": _transition_style(segments, blend_mode),
             "seg": segment_payload,
@@ -219,6 +231,7 @@ async def send_wled_transition(
 
 async def send_wled_power_off(
     hass: HomeAssistant, entity_id: str, transition: float, blend_mode: int,
+    members: list[str] | None = None,
 ) -> bool:
     """Fade a WLED device and all its segments off using its native style."""
     entity = er.async_get(hass).async_get(entity_id)
@@ -237,8 +250,20 @@ async def send_wled_power_off(
         ids = [segment.get("id") for segment in segments]
         if not all(isinstance(segment_id, int) for segment_id in ids):
             return False
+        if members is not None:
+            registry = er.async_get(hass)
+            selected = set()
+            for member_id in members:
+                member = registry.async_get(member_id)
+                if member is not None and member.config_entry_id == entry.entry_id:
+                    segment_id = wled_segment_id(member)
+                    if segment_id is not None:
+                        selected.add(segment_id)
+            ids = [segment_id for segment_id in ids if segment_id in selected]
+            if not ids:
+                return False
         payload = {
-            "on": False,
+            **({"on": False} if members is None or set(ids) == {segment["id"] for segment in segments} else {}),
             "tt": round(max(0, min(65, transition)) * 10),
             "bs": _transition_style(segments, blend_mode),
             "seg": [{"id": segment_id, "on": False} for segment_id in ids],

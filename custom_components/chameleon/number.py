@@ -1,19 +1,8 @@
-"""Number platform for Chameleon: transition slider.
-
-Brightness is owned by the light entity (since light entities have native
-brightness support). This platform only exposes the transition slider.
-
-A zero transition applies colors immediately and stops any running animation.
-Continuous animation is controlled separately by the Animation switch.
-
-Live updates: while an animation is running, slider drags push the new value
-into the running controller without restarting it.
-"""
+"""Transition duration sent to WLED for each scene or color change."""
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
@@ -29,11 +18,8 @@ from .const import (
     MAX_TRANSITION,
     MIN_TRANSITION,
 )
+from .entity_controls import LightEntityBrightness, controlled_entities
 from .helpers import get_chameleon_device_name, get_entity_base_name
-
-if TYPE_CHECKING:
-    from .animations import AnimationManager
-    from .light import ChameleonLight
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,7 +38,8 @@ async def async_setup_entry(
     initial_transition = entry.options.get(CONF_TRANSITION, entry.data.get(CONF_TRANSITION, DEFAULT_TRANSITION))
 
     async_add_entities(
-        [ChameleonTransitionNumber(hass, entry, light_entities, initial_transition)],
+        [ChameleonTransitionNumber(hass, entry, light_entities, initial_transition),
+         *[LightEntityBrightness(hass, entry, entity, "brightness") for entity in controlled_entities(hass, light_entities)]],
         True,
     )
 
@@ -61,16 +48,6 @@ def _entry_data(hass: HomeAssistant, entry_id: str) -> dict:
     """Return (creating if needed) the per-entry runtime dict in hass.data."""
     domain_data = hass.data.setdefault(DOMAIN, {})
     return domain_data.setdefault(entry_id, {})
-
-
-def _get_chameleon_light(hass: HomeAssistant, entry_id: str) -> ChameleonLight | None:
-    """Look up the registered Chameleon light entity for this config entry."""
-    return _entry_data(hass, entry_id).get("chameleon_light")
-
-
-def _get_animation_manager(hass: HomeAssistant) -> AnimationManager | None:
-    """Look up the shared animation manager."""
-    return hass.data.get(DOMAIN, {}).get("animation_manager")
 
 
 class ChameleonTransitionNumber(NumberEntity):
@@ -99,7 +76,6 @@ class ChameleonTransitionNumber(NumberEntity):
         # Clamp to the current allowed range — older config entries may have stored
         # values from a wider range (the slider used to go up to 60s).
         self._transition = max(MIN_TRANSITION, min(MAX_TRANSITION, float(initial_transition)))
-        self._last_nonzero = self._transition if self._transition > 0 else float(DEFAULT_TRANSITION)
 
         # Seed runtime data so the light's initial read sees a valid transition.
         _entry_data(hass, entry.entry_id)["transition"] = self._transition
@@ -124,13 +100,8 @@ class ChameleonTransitionNumber(NumberEntity):
         return self._transition
 
     async def async_set_native_value(self, value: float) -> None:
-        """Handle a slider change.
-
-        - 0 → stop animation; re-apply current scene as static.
-        - 0 → >0 → re-apply current scene using the new fade duration.
-        - >0 → >0 → push live transition update to the running controller.
-        """
-        new_value = round(float(value), 1)
+        """Save the duration for subsequent WLED requests."""
+        new_value = max(MIN_TRANSITION, min(MAX_TRANSITION, round(float(value), 1)))
         previous = self._transition
         self._transition = new_value
 
@@ -139,9 +110,6 @@ class ChameleonTransitionNumber(NumberEntity):
             self._entry, options={**self._entry.options, CONF_TRANSITION: new_value}
         )
 
-        if new_value > 0:
-            self._last_nonzero = new_value
-
         _LOGGER.info(
             "Transition %.1fs → %.1fs for %s",
             previous,
@@ -149,28 +117,11 @@ class ChameleonTransitionNumber(NumberEntity):
             self._light_entities,
         )
 
-        crossed_zero_boundary = (previous == 0) != (new_value == 0)
-        if crossed_zero_boundary:
-            # The scene needs a fresh apply when crossing zero.
-            await self._reapply_current_scene()
-        else:
-            # Same mode: live-update the running controller (no-op if not running).
-            manager = _get_animation_manager(self.hass)
-            if manager:
-                manager.update_transition(self._entry.entry_id, new_value)
-
         self.async_write_ha_state()
-
-    async def _reapply_current_scene(self) -> None:
-        """Ask the Chameleon light entity to re-apply its current scene."""
-        light = _get_chameleon_light(self.hass, self._entry.entry_id)
-        if light is not None:
-            await light.async_reapply_current_scene()
 
     @property
     def extra_state_attributes(self):
         """Return extra state attributes."""
         return {
             "light_entities": self._light_entities,
-            "last_nonzero": self._last_nonzero,
         }

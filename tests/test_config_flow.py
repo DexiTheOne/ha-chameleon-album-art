@@ -168,7 +168,6 @@ class TestChameleonOptionsFlow:
             CONF_MEDIA_PLAYER_ENTITY: "media_player.eversolo_dmp_a6",
             CONF_RANDOMIZE_COLOR_ASSIGNMENT: True,
             "interesting_colors": False,
-            "animation_enabled": True,
             "send_palette_to_wled": False,
         }
 
@@ -181,7 +180,7 @@ class TestChameleonOptionsFlow:
         flow.config_entry = MagicMock(options={CONF_RANDOMIZE_COLOR_ASSIGNMENT: True}, data={})
         result = await flow.async_step_init({CONF_NORMALIZE_BRIGHTNESS: True})
 
-        assert result["data"] == {CONF_NORMALIZE_BRIGHTNESS: True, CONF_RANDOMIZE_COLOR_ASSIGNMENT: True, "interesting_colors": False, "animation_enabled": True, "send_palette_to_wled": False}
+        assert result["data"] == {CONF_NORMALIZE_BRIGHTNESS: True, CONF_RANDOMIZE_COLOR_ASSIGNMENT: True, "interesting_colors": False, "send_palette_to_wled": False}
 
     @pytest.mark.asyncio
     async def test_interesting_colors_option_survives_configure(self):
@@ -194,7 +193,7 @@ class TestChameleonOptionsFlow:
         )
         result = await flow.async_step_init({CONF_NORMALIZE_BRIGHTNESS: True})
         assert result["data"]["interesting_colors"] is True
-        assert result["data"]["animation_enabled"] is True
+        assert "animation_enabled" not in result["data"]
         assert result["data"]["send_palette_to_wled"] is False
 
     @pytest.mark.asyncio

@@ -3,8 +3,8 @@ apply_scene:
   description: >-
     Apply a scene to one or more Chameleon light entities. Optionally set
     brightness and transition in the same call so the scene renders at the
-    requested values directly. The Animation switch controls whether scenes
-    continue cycling; transition controls the fade duration.
+    requested values directly. Transition controls the native WLED duration;
+    other lights receive immediate color updates.
   target:
     entity:
       domain: light

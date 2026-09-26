@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from custom_components.chameleon.const import CONF_ANIMATION_ENABLED, CONF_INTERESTING_COLORS, CONF_RANDOMIZE_COLOR_ASSIGNMENT, DOMAIN
-from custom_components.chameleon.switch import ChameleonAnimationSwitch, ChameleonInterestingColorsSwitch, ChameleonRandomizeColorAssignmentSwitch
+from custom_components.chameleon.const import CONF_INTERESTING_COLORS, CONF_RANDOMIZE_COLOR_ASSIGNMENT, DOMAIN
+from custom_components.chameleon.switch import ChameleonInterestingColorsSwitch, ChameleonRandomizeColorAssignmentSwitch
 
 
 @pytest.mark.asyncio
@@ -67,31 +67,6 @@ async def test_switch_turn_on_persists_new_value():
         entry,
         options={"normalize_brightness": True, CONF_RANDOMIZE_COLOR_ASSIGNMENT: True},
     )
-
-
-@pytest.mark.asyncio
-async def test_animation_switch_preserves_transition_and_reapplies_scene():
-    entry = MagicMock()
-    entry.entry_id = "entry-1"
-    entry.data = {"transition": 4}
-    entry.options = {}
-    light = MagicMock()
-    from unittest.mock import AsyncMock
-    light.async_set_animation_enabled = AsyncMock()
-    hass = MagicMock()
-    hass.data = {DOMAIN: {entry.entry_id: {"chameleon_light": light}}}
-    with patch("custom_components.chameleon.switch.get_entity_base_name", return_value="one"):
-        control = ChameleonAnimationSwitch(hass, entry, ["light.one"])
-
-    assert control.is_on is True
-    await control.async_turn_off()
-
-    hass.config_entries.async_update_entry.assert_called_once_with(
-        entry, options={CONF_ANIMATION_ENABLED: False}
-    )
-    light.async_set_animation_enabled.assert_awaited_once_with(False)
-    assert entry.data["transition"] == 4
-    assert control.is_on is False
 
 
 @pytest.mark.asyncio

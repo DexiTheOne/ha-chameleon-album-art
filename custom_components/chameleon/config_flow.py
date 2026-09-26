@@ -17,7 +17,6 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
-    CONF_ANIMATION_ENABLED,
     CONF_LIGHT_ENTITIES,
     CONF_INTERESTING_COLORS,
     CONF_MEDIA_PLAYER_ENTITY,
@@ -25,9 +24,7 @@ from .const import (
     CONF_RANDOMIZE_COLOR_ASSIGNMENT,
     CONF_SEND_PALETTE_TO_WLED,
     CONF_TRANSITION,
-    CONF_TRANSITION_STYLE,
     CONF_WLED_BLEND_STYLE,
-    DEFAULT_ANIMATION_ENABLED,
     DEFAULT_NORMALIZE_BRIGHTNESS,
     DEFAULT_INTERESTING_COLORS,
     DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT,
@@ -38,12 +35,13 @@ from .const import (
     MIN_TRANSITION,
 )
 from .helpers import get_entry_title
+from .entity_controls import OPTIONS_KEY
 
 
 class ChameleonConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Chameleon."""
 
-    VERSION = 4  # v4 collapses scene select + brightness number into a single light entity with EFFECT support
+    VERSION = 5
 
     @staticmethod
     @callback
@@ -69,7 +67,7 @@ class ChameleonConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
         # Transition default; runtime control is via number.chameleon_{light}_transition
-        # (set to 0 to disable animation entirely).
+        # A value of 0 is passed directly to WLED.
         data_schema = vol.Schema(
             {
                 vol.Required(CONF_LIGHT_ENTITIES): EntitySelector(
@@ -108,10 +106,6 @@ class ChameleonOptionsFlow(OptionsFlowWithReload):
             # The assignment switch owns this option. Keep it when the user
             # changes media-player or brightness settings through this flow.
             options = dict(user_input)
-            options[CONF_ANIMATION_ENABLED] = self.config_entry.options.get(
-                CONF_ANIMATION_ENABLED,
-                self.config_entry.data.get(CONF_ANIMATION_ENABLED, DEFAULT_ANIMATION_ENABLED),
-            )
             options[CONF_INTERESTING_COLORS] = self.config_entry.options.get(
                 CONF_INTERESTING_COLORS,
                 self.config_entry.data.get(CONF_INTERESTING_COLORS, DEFAULT_INTERESTING_COLORS),
@@ -124,7 +118,7 @@ class ChameleonOptionsFlow(OptionsFlowWithReload):
                 CONF_SEND_PALETTE_TO_WLED,
                 self.config_entry.data.get(CONF_SEND_PALETTE_TO_WLED, DEFAULT_SEND_PALETTE_TO_WLED),
             )
-            for key in (CONF_TRANSITION, CONF_TRANSITION_STYLE, CONF_WLED_BLEND_STYLE):
+            for key in (CONF_TRANSITION, CONF_WLED_BLEND_STYLE, OPTIONS_KEY):
                 if key in self.config_entry.options:
                     options[key] = self.config_entry.options[key]
             return self.async_create_entry(title="", data=options)

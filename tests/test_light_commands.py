@@ -327,8 +327,22 @@ async def test_scene_select_keeps_scene_during_off_and_restores_on(group, scene_
     assert select.current_option == scene_name
 
 
-async def test_scene_select_has_no_selection_before_first_scene(group):
-    assert group.selected_scene is None
+async def test_scene_select_defaults_to_random_without_powering_lights_on(group):
+    from custom_components.chameleon.select import ChameleonSceneSelect
+
+    group.hass.data[DOMAIN]["entry"]["chameleon_light"] = group
+    with patch("custom_components.chameleon.scene_control.get_entity_base_name", return_value="test"):
+        select = ChameleonSceneSelect(group.hass, group._entry, group._light_entities)
+    assert select.current_option == "Random"
+    assert "Random" in select.options
+    assert not group.is_on
+    assert group.effect is None
+    group.hass.services.async_call.assert_not_awaited()
+    group._light_controller.apply_color_to_light.assert_not_awaited()
+    with patch.object(group, "_apply_effect", new_callable=AsyncMock) as apply:
+        await group.async_turn_on()
+    apply.assert_awaited_once_with("Random")
+    assert group.is_on
 
 
 @pytest.mark.parametrize("command", ["off", "zero_brightness", "off_effect"])

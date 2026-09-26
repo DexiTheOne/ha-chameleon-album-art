@@ -347,9 +347,9 @@ class ChameleonLight(LightEntity):
         return self._effect
 
     @property
-    def selected_scene(self) -> str | None:
-        """Return the selected scene, retaining it while the light is off."""
-        return self._effect or self._last_effect
+    def selected_scene(self) -> str:
+        """Retain the selected scene while off, defaulting to Random at startup."""
+        return self._effect or self._last_effect or SCENE_RANDOM
 
     @property
     def effect_list(self) -> list[str]:

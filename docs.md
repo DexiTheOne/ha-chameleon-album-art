@@ -373,3 +373,28 @@
 - Publication: user authorized committing and pushing this fix to the configured GitHub main branch, and will install the update through Home Assistant Store themselves. Remote preflight confirmed local HEAD matches origin/main; the six-file diff was reviewed for secrets and the full suite passed again (131 tests).
 - Remaining limits: no live deployment or restart was performed for this fix; live entity readback is pending the user's installation. Remembered scenes survive power toggles within the running integration; persistence across integration reloads or Home Assistant restarts is outside this change.
 - Rollback: revert the new light property and select property change, along with their tests and README update, then install the previous integration code.
+
+## 2026-09-26 — Accept dark artwork; reject only pure black
+
+- Request: allow the current dark green cover through Only Interesting Colors; reject only pure black.
+- Evidence: live Common Area Accent Lights is on Album Art with normalization enabled and reports No vivid colors found. Privately inspected current Tigallerro artwork: dominant (13, 27, 20), hue 150 degrees, rejected by the old value threshold. The updated filter accepts it; normalization yields (89, 255, 172) with the same hue.
+- Actions: retain every non-black swatch, including gray, muted, skin tones and repeated hues. Remove brightness normalization's darkness cutoff. Check original pixels for entirely black images before ColorThief rounds black to nonzero gray. Preserve mostly-white balancing; update no-color errors and README. No IDs, consumers or saved settings changed.
+- Validation: 139 local tests passed; regressions cover true-black image quantization, near-black colors, dark green hue preservation and the observed cover swatch. Source lint and whitespace checks passed. Repository fast-forward pull found it up to date.
+- Limits: local implementation only; not published or installed. Live light application remains unverified. Normalization brightens the green rather than reproducing the background's darkness. No live device changes or restart performed.
+- Rollback: restore prior color_extractor.py/light.py files and reinstall/restart if deployed; no registry migration.
+
+## 2026-09-26 — Avoid black flash before animated shutdown
+
+- Request: turning off the main Chameleon light briefly flashes black before the off animation.
+- Evidence: current shutdown uses global WLED power-off. WLED's renderer documents a race where global brightness changes before the transition snapshot exists, blanking a frame: https://github.com/wled/WLED/blob/main/wled00/FX_fcn.cpp (global On/Off transition workaround). This matches the reported symptom; installed firmware and physical output have not been inspected for this change.
+- Actions: send segment off flags with the chosen style and duration while leaving master brightness untouched; wait for the native animation, then send master off with zero transition only when all device segments are controlled. Partial control leaves master power untouched. Preserve colors, effects, brightness, single-LED fade guard, disabled-member exclusions and remembered scene. Ordinary lights begin shutdown concurrently with WLED. Queue timing credits time already spent animating, avoiding a second full cooldown, including brightness-zero and Off-effect requests. Failed native requests retain service fallback.
+- Validation: 146 local tests passed; regression cases cover ordering across the animation wait, whole/partial device control, zero duration, all supported styles, single-LED fade, master-finalization failure, concurrent ordinary-light shutdown and no double queue delay. Source/test lint and Git whitespace checks passed.
+- Limits: local code only; not committed, published or installed. Live Home Assistant readback and physical verification remain pending. Main Chameleon off now completes after the animation, and fully controlled WLED segment flags remain off afterward until turn-on restores them. Existing uncommitted dark-artwork changes were preserved.
+- Rollback: revert this entry's staged shutdown and queue-duration changes in light.py/wled_palette.py and corresponding tests; retain unrelated artwork changes. No entry/entity ID, saved setting or automation migration is required.
+
+## 2026-09-26 — Install and test combined artwork, selector and shutdown fixes
+
+- Request: install the dark-artwork change alongside the scene-selector and power-off flash fixes, and test all three on the server while the user keeps the album playing.
+- Preflight: 146 tests and source/test lint passed. Remote main matches local HEAD 92ea450. Inspected loaded entry, controls, member lights, HACS source and consumers. Full Home Assistant backup completed before installation; Core 2026.8.3 configuration check passed. Retain existing entry/IDs/options, transition 2.5 seconds, Random WLED style and enabled light controls.
+- Installation path: direct server authentication unavailable; publish reviewed combined source to the configured private repository and install its exact revision through HACS. No registry or consumer migration required. Scene-selector fix already present in committed HEAD. Runtime deployment and live results follow after verification.
+- Recovery: reinstall previous HACS revision e045550 (or selector-only 92ea450) and restart; full backup is supplementary recovery requiring separate restore authorization. Live test will finish on Album Art using the user's playing cover.

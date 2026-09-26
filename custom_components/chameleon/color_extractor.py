@@ -38,39 +38,8 @@ def _normalize_palette(colors: list[RGBColor]) -> list[RGBColor]:
 
 
 def select_interesting_colors(colors: list[RGBColor]) -> list[RGBColor]:
-    """Keep distinct, visible hues in their original dominance order.
-
-    Score source swatches before brightness enhancement. A pale but distinctly
-    blue background has a usable hue; a near-white highlight or gray does not.
-    Muted warm skin tones and repeated shades of one hue should not crowd out
-    the rest of an album cover's palette.
-    """
-    selected: list[tuple[int, RGBColor]] = []
-    selected_hues: list[float] = []
-    white_candidate: tuple[int, RGBColor] | None = None
-    for index, color in enumerate(colors):
-        r, g, b = clamp_rgb_color(color)
-        hue, saturation, value = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
-        hue_degrees = hue * 360
-        if white_candidate is None and value >= 0.8 and saturation < 0.1:
-            white_candidate = (index, (r, g, b))
-        if value < 0.18 or saturation < 0.15 or max(r, g, b) - min(r, g, b) < 30:
-            continue
-        # Typical muted tan/peach face colors are rarely useful LED accents.
-        # Saturated oranges and yellows outside this range remain available.
-        if 15 <= hue_degrees <= 50 and 0.15 <= saturation <= 0.6 and 0.3 <= value <= 0.95:
-            continue
-        if any(min(abs(hue_degrees - chosen), 360 - abs(hue_degrees - chosen)) < 25 for chosen in selected_hues):
-            continue
-        selected.append((index, (r, g, b)))
-        selected_hues.append(hue_degrees)
-    # An achromatic cover can otherwise leave every light unchanged. A leading
-    # white swatch with at most one useful hue also represents a mostly white
-    # image; several distinct hues keep the usual white exclusion in place.
-    if white_candidate is not None and (not selected or (white_candidate[0] <= 1 and len(selected) <= 1)):
-        selected.append(white_candidate)
-        selected.sort(key=lambda item: item[0])
-    return [color for _, color in selected]
+    """Keep every non-black source swatch in its original dominance order."""
+    return [normalized for color in colors if (normalized := clamp_rgb_color(color)) != (0, 0, 0)]
 
 
 def balance_mostly_white_palette(colors: list[RGBColor], white_fraction: float, light_count: int) -> list[RGBColor]:
@@ -117,14 +86,14 @@ def normalize_palette_brightness(colors: list[RGBColor]) -> list[RGBColor]:
     """Make extracted colors bright and colorful without changing their hue.
 
     HSV value equalizes RGB output level; a saturation floor keeps muted image
-    swatches colorful on LEDs. Nearly neutral or black colors have no reliable
+    swatches colorful on LEDs. Neutral or black colors have no reliable
     hue, so they become white rather than an arbitrary saturated color.
     """
     result: list[RGBColor] = []
     for color in colors:
         r, g, b = clamp_rgb_color(color)
         h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
-        if v < 0.05 or s < 0.08:
+        if v == 0 or s == 0:
             result.append((255, 255, 255))
             continue
         bright_r, bright_g, bright_b = colorsys.hsv_to_rgb(h, max(s, 0.65), 1.0)
@@ -145,6 +114,17 @@ def _sync_extract_palette(image_path: str, color_count: int, quality: int) -> li
     from colorthief import ColorThief
 
     color_thief = ColorThief(image_path)
+    try:
+        return _extract_nonblack_palette(color_thief, color_count, quality)
+    finally:
+        color_thief.image.close()
+
+
+def _extract_nonblack_palette(color_thief, color_count: int, quality: int) -> list[RGBColor]:
+    """Detect truly black images before ColorThief rounds black to (4, 4, 4)."""
+    with color_thief.image.convert("RGB") as image:
+        if image.getextrema() == ((0, 0), (0, 0), (0, 0)):
+            return []
     return color_thief.get_palette(color_count=color_count, quality=quality)
 
 
@@ -155,7 +135,7 @@ def _sync_extract_palette_bytes(image_bytes: bytes, color_count: int, quality: i
     with BytesIO(image_bytes) as source:
         color_thief = ColorThief(source)
         try:
-            return color_thief.get_palette(color_count=color_count, quality=quality)
+            return _extract_nonblack_palette(color_thief, color_count, quality)
         finally:
             color_thief.image.close()
 

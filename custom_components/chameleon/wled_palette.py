@@ -263,19 +263,24 @@ async def send_wled_power_off(
             if not ids:
                 return False
         whole_device = members is None or set(ids) == {segment["id"] for segment in segments}
-        # Global power and segment power must not change together: the segment
-        # transition would snapshot an already-off device for spatial blends.
-        # Keep segment flags intact for a global off; partial control uses only
-        # segment flags and leaves the master's power untouched.
+        # Animate segment power while master brightness stays unchanged. Some
+        # WLED versions blank a frame when global power changes before the
+        # spatial transition snapshot exists. Cut master power only afterward.
+        duration = round(max(0, min(65, transition)) * 10) / 10
         payload = {
-            **({"on": False} if whole_device else {
-                "seg": [{"id": segment_id, "on": False} for segment_id in ids],
-            }),
-            "tt": round(max(0, min(65, transition)) * 10),
+            "seg": [{"id": segment_id, "on": False} for segment_id in ids],
+            "tt": round(duration * 10),
             "bs": _transition_style(segments, blend_mode),
         }
         async with session.post(f"http://{host}/json/state", json=payload, timeout=5) as response:
             response.raise_for_status()
+        if duration:
+            await asyncio.sleep(duration)
+        if whole_device:
+            async with session.post(
+                f"http://{host}/json/state", json={"on": False, "tt": 0}, timeout=5,
+            ) as response:
+                response.raise_for_status()
         return True
     except Exception as err:
         _LOGGER.warning("Could not fade WLED light %s off: %s", entity_id, type(err).__name__)

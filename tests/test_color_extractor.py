@@ -196,21 +196,35 @@ class TestRgbToHs:
         assert 40 < sat < 60  # Approximately 50% saturation
 
 
-def test_interesting_colors_reject_neutrals_dark_and_pale_swatches():
-    colors = [(255, 255, 255), (0, 0, 0), (35, 12, 12),
-              (180, 178, 170), (255, 220, 220), (210, 40, 90), (35, 100, 170)]
-    assert select_interesting_colors(colors) == [(210, 40, 90), (35, 100, 170)]
-    assert select_interesting_colors([(255, 255, 255)]) == [(255, 255, 255)]
+@pytest.mark.parametrize("color", [(0, 1, 0), (3, 12, 5), (12, 12, 12), (220, 180, 150), (255, 255, 255)])
+def test_interesting_colors_only_rejects_pure_black(color):
+    assert select_interesting_colors([(0, 0, 0), color]) == [color]
+    assert select_interesting_colors([(0, 0, 0)]) == []
 
 
-def test_interesting_colors_allows_white_for_neutral_or_mostly_white_palettes():
-    assert select_interesting_colors([(12, 12, 12), (242, 243, 241), (90, 90, 90)]) == [(242, 243, 241)]
-    assert select_interesting_colors([(250, 250, 250), (30, 100, 180), (18, 18, 18)]) == [
-        (250, 250, 250), (30, 100, 180)
-    ]
-    assert select_interesting_colors([(255, 255, 255), (220, 40, 80), (30, 100, 180)]) == [
-        (220, 40, 80), (30, 100, 180)
-    ]
+def test_dark_green_normalization_preserves_hue():
+    colors = [(0, 1, 0), (3, 12, 5), (9, 10, 9)]
+    normalized = normalize_palette_brightness(select_interesting_colors(colors))
+    for source, result in zip(colors, normalized, strict=True):
+        assert max(result) == 255
+        assert result[1] > result[0] and result[1] > result[2]
+        assert rgb_to_hs(result)[0] == pytest.approx(rgb_to_hs(source)[0], abs=1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("color,accepted", [((0, 0, 0), False), ((0, 1, 0), True), ((3, 12, 5), True)])
+async def test_black_artwork_detection_precedes_quantization(color, accepted):
+    image = Image.new("RGB", (40, 40), color)
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    hass = MagicMock()
+
+    async def run_in_executor(func, *args):
+        return func(*args)
+
+    hass.async_add_executor_job = run_in_executor
+    palette = await extract_color_palette_bytes(hass, buffer.getvalue(), color_count=3, quality=1)
+    assert bool(select_interesting_colors(palette)) == accepted
 
 
 def test_mostly_white_artwork_assigns_white_to_most_lights():
@@ -228,19 +242,19 @@ def test_mostly_white_artwork_assigns_white_to_most_lights():
     assert balance_mostly_white_palette([(225, 25, 40)], 0.4, 7) == [(225, 25, 40)]
 
 
-def test_interesting_colors_keeps_pale_blue_without_repeating_coral():
-    """The Squeezebox cover's dominant blue survives while coral shades collapse."""
+def test_interesting_colors_keeps_all_nonblack_shades():
+    """All non-black shades remain available, including muted and repeated hues."""
     colors = [(201, 228, 244), (23, 25, 27), (231, 161, 147),
               (119, 90, 84), (234, 173, 157), (156, 122, 110), (121, 135, 143)]
-    assert select_interesting_colors(colors) == [(201, 228, 244), (231, 161, 147)]
+    assert select_interesting_colors(colors) == colors
     bright = normalize_palette_brightness(select_interesting_colors(colors))
     assert bright[0][2] == 255 and bright[0][0] < bright[0][2]
 
 
-def test_interesting_colors_suppresses_skin_tones_but_keeps_bright_orange():
+def test_interesting_colors_keeps_skin_tones_and_bright_orange():
     colors = [(220, 180, 150), (190, 135, 100), (160, 110, 85),
               (40, 110, 180), (255, 150, 20)]
-    assert select_interesting_colors(colors) == [(40, 110, 180), (255, 150, 20)]
+    assert select_interesting_colors(colors) == colors
 
 
 @pytest.mark.parametrize("fails", [False, True])
@@ -260,3 +274,10 @@ def test_artwork_extractor_closes_image_and_stream_even_on_failure(fails):
             assert _sync_extract_palette_bytes(b"image", 3, 1) == [(255, 0, 0)]
     thief.image.close.assert_called_once()
     assert factory.call_args.args[0].closed
+
+
+def test_tigallerro_dark_green_palette_is_accepted_and_brightened():
+    """The observed dominant background keeps its 150-degree green hue."""
+    source = [(13, 27, 20)]
+    assert select_interesting_colors(source) == source
+    assert normalize_palette_brightness(select_interesting_colors(source)) == [(89, 255, 172)]

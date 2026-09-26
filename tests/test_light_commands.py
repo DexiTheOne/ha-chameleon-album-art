@@ -329,3 +329,41 @@ async def test_scene_select_keeps_scene_during_off_and_restores_on(group, scene_
 
 async def test_scene_select_has_no_selection_before_first_scene(group):
     assert group.selected_scene is None
+
+
+@pytest.mark.parametrize("command", ["off", "zero_brightness", "off_effect"])
+async def test_staged_shutdown_does_not_wait_twice_in_queue(group, command):
+    group.hass.data[DOMAIN]["entry"]["transition"] = 2.5
+    with patch.object(group, "_do_turn_off", new_callable=AsyncMock, return_value=2.5) as shutdown, patch(
+        "custom_components.chameleon.light.asyncio.sleep", new_callable=AsyncMock
+    ) as sleep:
+        if command == "off":
+            await group.async_turn_off()
+        elif command == "zero_brightness":
+            await group.async_turn_on(brightness=0)
+        else:
+            await group.async_turn_on(effect="Off")
+        await group._transition_worker
+    shutdown.assert_awaited_once()
+    sleep.assert_awaited_once_with(0)
+
+
+async def test_wled_shutdown_and_ordinary_lights_start_together(group):
+    ordinary_started = asyncio.Event()
+    group._light_entities = ["light.wled", "light.enabled"]
+
+    async def ordinary_call(*args, **kwargs):
+        ordinary_started.set()
+
+    async def shutdown(*args):
+        await asyncio.wait_for(ordinary_started.wait(), timeout=1)
+        return True
+
+    group.hass.services.async_call.side_effect = ordinary_call
+    with patch("custom_components.chameleon.light.wled_entry_id",
+               side_effect=lambda hass, entity: "wled-entry" if entity == "light.wled" else None), patch(
+        "custom_components.chameleon.light.send_wled_power_off", new_callable=AsyncMock, side_effect=shutdown
+    ):
+        await group.async_turn_off()
+    assert ordinary_started.is_set()
+    assert not group.is_on

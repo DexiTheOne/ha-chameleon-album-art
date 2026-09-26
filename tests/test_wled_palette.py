@@ -1,7 +1,7 @@
 """WLED palette requests must use image colors and preserve device effects."""
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -225,10 +225,16 @@ async def test_native_power_off_uses_selected_style_and_duration_for_all_segment
         "custom_components.chameleon.wled_palette.async_get_clientsession", return_value=session
     ):
         registry.return_value.async_get.return_value = SimpleNamespace(config_entry_id="wled-1")
-        assert await send_wled_power_off(hass, "light.one", duration, style)
+        with patch("custom_components.chameleon.wled_palette.asyncio.sleep", new_callable=AsyncMock) as sleep:
+            assert await send_wled_power_off(hass, "light.one", duration, style)
+            if duration:
+                sleep.assert_awaited_once_with(duration)
+            else:
+                sleep.assert_not_awaited()
     assert session.posts == [{
-        "on": False, "tt": round(duration * 10), "bs": style,
-    }]
+        "seg": [{"id": 0, "on": False}, {"id": 1, "on": False}],
+        "tt": round(duration * 10), "bs": style,
+    }, {"on": False, "tt": 0}]
 
 
 @pytest.mark.asyncio
@@ -244,5 +250,61 @@ async def test_single_led_segment_fades_on_and_off_with_selected_duration(style)
     ):
         registry.return_value.async_get.return_value = SimpleNamespace(config_entry_id="wled-1")
         assert await send_wled_transition(hass, "light.one", [(255, 120, 30)], 0, 80, 1.5, style)
-        assert await send_wled_power_off(hass, "light.one", 1.5, style)
-    assert [(payload["bs"], payload["tt"]) for payload in session.posts] == [(0, 15), (0, 15)]
+        with patch("custom_components.chameleon.wled_palette.asyncio.sleep", new_callable=AsyncMock):
+            assert await send_wled_power_off(hass, "light.one", 1.5, style)
+    assert [(payload["bs"], payload["tt"]) for payload in session.posts[:2]] == [(0, 15), (0, 15)]
+    assert session.posts[2] == {"on": False, "tt": 0}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("partial", [False, True])
+async def test_shutdown_keeps_master_power_until_segment_animation_finishes(partial):
+    hass = MagicMock()
+    hass.config_entries.async_get_entry.return_value = SimpleNamespace(
+        entry_id="wled-1", domain="wled", data={"host": "10.0.0.5"}
+    )
+    session = _Session()
+    members = ["light.segment"] if partial else None
+
+    async def during_animation(duration):
+        assert duration == 2.5
+        assert len(session.posts) == 1
+        assert "on" not in session.posts[0]
+        assert session.posts[0]["seg"] == ([{"id": 0, "on": False}] if partial else
+                                            [{"id": 0, "on": False}, {"id": 1, "on": False}])
+
+    with patch("custom_components.chameleon.wled_palette.er.async_get") as registry, patch(
+        "custom_components.chameleon.wled_palette.async_get_clientsession", return_value=session
+    ), patch("custom_components.chameleon.wled_palette.asyncio.sleep", new_callable=AsyncMock,
+             side_effect=during_animation) as sleep:
+        registry.return_value.async_get.return_value = SimpleNamespace(config_entry_id="wled-1", unique_id="device_0")
+        assert await send_wled_power_off(hass, "light.segment", 2.5, 4, members)
+    if partial:
+        sleep.assert_awaited_once_with(2.5)
+        assert session.posts == [{"seg": [{"id": 0, "on": False}], "tt": 25, "bs": 4}]
+    else:
+        sleep.assert_awaited_once()
+        assert session.posts[1] == {"on": False, "tt": 0}
+
+
+@pytest.mark.asyncio
+async def test_shutdown_reports_failed_master_finalization_for_service_fallback():
+    hass = MagicMock()
+    hass.config_entries.async_get_entry.return_value = SimpleNamespace(
+        entry_id="wled-1", domain="wled", data={"host": "10.0.0.5"}
+    )
+    session = _Session()
+    original_post = session.post
+
+    def post(url, **kwargs):
+        if kwargs["json"].get("on") is False:
+            raise OSError("Master unavailable")
+        return original_post(url, **kwargs)
+
+    session.post = post
+    with patch("custom_components.chameleon.wled_palette.er.async_get") as registry, patch(
+        "custom_components.chameleon.wled_palette.async_get_clientsession", return_value=session
+    ), patch("custom_components.chameleon.wled_palette.asyncio.sleep", new_callable=AsyncMock):
+        registry.return_value.async_get.return_value = SimpleNamespace(config_entry_id="wled-1")
+        assert not await send_wled_power_off(hass, "light.one", 2.5, 4)
+    assert "on" not in session.posts[0]

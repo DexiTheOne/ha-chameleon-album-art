@@ -103,8 +103,9 @@ async def test_wled_segment_zero_is_controlled_and_all_managed_segments_power_of
         )
         assert session.posts[0]["seg"] == [{"id": 0, "on": False, "bri": 0, "col": [[255, 0, 0]]}]
         assert await send_wled_power_off(hass, "light.zero", 1, 4, list(entities))
-        assert session.posts[1]["on"] is False
-        assert "seg" not in session.posts[1]
+        assert session.posts[1]["seg"] == [{"id": 0, "on": False}, {"id": 1, "on": False}]
+        assert "on" not in session.posts[1]
+        assert session.posts[2] == {"on": False, "tt": 0}
 
 
 def test_control_names_use_registry_when_target_state_not_loaded():

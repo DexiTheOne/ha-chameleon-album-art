@@ -444,11 +444,12 @@ class ChameleonLight(LightEntity):
             try:
                 async with self._lock:
                     duration = max(0, self._get_runtime_transition())
-                    await action()
+                    consumed = await action()
                 if not completion.done():
                     completion.set_result(None)
-                # Start the clock after all device requests have completed.
-                await asyncio.sleep(duration)
+                # Normal moves reserve their duration after requests complete.
+                # Staged shutdown reports time already spent animating.
+                await asyncio.sleep(max(0, duration - (consumed or 0)))
             except asyncio.CancelledError:
                 if not completion.done():
                     completion.cancel()
@@ -460,7 +461,7 @@ class ChameleonLight(LightEntity):
             self._transition_queue.popleft()
             self._active_transition = None
 
-    async def _do_turn_on(self, **kwargs: Any) -> None:
+    async def _do_turn_on(self, **kwargs: Any) -> float | None:
         """Inner turn-on, runs under ``self._lock``."""
         self._last_error = None
         self._failed_lights = {}
@@ -472,8 +473,7 @@ class ChameleonLight(LightEntity):
         # brightness=0 from a card almost never happens (cards convert to
         # turn_off) but handle defensively without re-acquiring the lock.
         if brightness is not None and brightness == 0:
-            await self._do_turn_off()
-            return
+            return await self._do_turn_off()
 
         # Update brightness if provided.
         brightness_changed = False
@@ -488,8 +488,7 @@ class ChameleonLight(LightEntity):
         if effect is not None:
             # Scene change — full re-apply.
             if effect == SCENE_OFF:
-                await self._do_turn_off()
-                return
+                return await self._do_turn_off()
             if self._effect == SCENE_ALBUM_ART and effect != SCENE_ALBUM_ART:
                 self._effect = None
             self._manual_color = None
@@ -514,10 +513,11 @@ class ChameleonLight(LightEntity):
         self._is_on = True
         self.async_write_ha_state()
 
-    async def _do_turn_off(self) -> None:
+    async def _do_turn_off(self) -> float:
         """Inner turn-off, runs under ``self._lock``."""
 
         transition = self._get_runtime_transition()
+        started = asyncio.get_running_loop().time()
 
         async def turn_off_entity(entity_id: str) -> None:
             try:
@@ -534,22 +534,24 @@ class ChameleonLight(LightEntity):
             entry_id = wled_entry_id(self.hass, entity_id)
             if entry_id and entry_id not in devices:
                 devices[entry_id] = entity_id
-        outcomes = await asyncio.gather(*(
+        ordinary = [entity_id for entity_id in enabled if not wled_entry_id(self.hass, entity_id)]
+        outcomes, _ = await asyncio.gather(asyncio.gather(*(
             send_wled_power_off(
                 self.hass, entity_id, transition, blend_mode,
                 [member for member in enabled if wled_entry_id(self.hass, member) == entry_id],
             ) for entry_id, entity_id in devices.items()
-        ))
-        ordinary = [entity_id for entity_id in enabled if not wled_entry_id(self.hass, entity_id)]
+        )), asyncio.gather(*(turn_off_entity(entity_id) for entity_id in ordinary)))
         failed = {entry_id for entry_id, succeeded in zip(devices, outcomes, strict=True) if not succeeded}
         fallback = [entity_id for entity_id in enabled if wled_entry_id(self.hass, entity_id) in failed]
-        await asyncio.gather(*(turn_off_entity(entity_id) for entity_id in [*ordinary, *fallback]))
+        await asyncio.gather(*(turn_off_entity(entity_id) for entity_id in fallback))
         self._is_on = False
         self._effect = None
         self._manual_color = None
         self._applied_colors = {}
         # _last_effect is preserved so a bare turn_on can restore it.
         self.async_write_ha_state()
+        # Staged WLED shutdown has already waited through its animation.
+        return 0 if fallback or not devices else min(max(0, transition), asyncio.get_running_loop().time() - started)
 
     def _enabled_entities(self):
         return [entity for entity in controlled_entities(self.hass, self._light_entities)
@@ -615,12 +617,11 @@ class ChameleonLight(LightEntity):
 
     # ── Internals ────────────────────────────────────────────────────────
 
-    async def _apply_effect(self, effect: str, *, reuse_random_assignment: bool = False) -> None:
+    async def _apply_effect(self, effect: str, *, reuse_random_assignment: bool = False) -> float | None:
         """Apply a scene effect by name (handles Random and Off specially)."""
         # "Off" via the service path is equivalent to turn_off.
         if effect == SCENE_OFF:
-            await self._do_turn_off()
-            return
+            return await self._do_turn_off()
 
         if effect == SCENE_ALBUM_ART:
             # Selecting Album Art is a state change even if artwork is temporarily
@@ -770,7 +771,7 @@ class ChameleonLight(LightEntity):
             return
         colors = self._prepare_palette(colors, white_fraction)
         if not colors:
-            self._last_error = "No vivid colors found in album artwork"
+            self._last_error = "No non-black colors found in album artwork"
             return
 
         previous_order = self._random_assignment_order
@@ -873,7 +874,7 @@ class ChameleonLight(LightEntity):
         colors = self._prepare_palette(colors, white_fraction)
 
         if not colors:
-            self._last_error = "No vivid colors found in image scene"
+            self._last_error = "No non-black colors found in image scene"
             return ApplyColorsResult()
         self._extracted_palette = colors
         return await self._apply_palette_static(colors, brightness)

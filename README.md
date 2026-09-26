@@ -13,7 +13,7 @@ A Home Assistant custom integration that applies colors from images or a media p
 - Turn on **Only Interesting Colors** in the integration device controls to skip black, gray, very dark, muted tan/peach skin tones, and repeated shades of one hue in album art and image scenes. White is skipped in colorful images. When at least 70% of an image is bright neutral white and at most one accent hue remains, white fills most light assignments and up to two lights use that accent. Black-and-white images can use white even if palette extraction omits it. Pale colors with a clear hue, such as sky blue, remain available. If none remain, the current lights are left unchanged.
 - Enable **Normalize Brightness** in Chameleon's Configure dialog to turn extracted image colors into bright, vibrant LED colors without changing the light brightness setting.
 - Use the **Randomize Color Assignment** switch on the Chameleon device to shuffle which light receives each palette color whenever **Random** is selected or valid Album Art is updated. Named image scenes keep their configured light order.
-- Turn on **Send Palette information to WLED** to fill all three color slots on every segment of a configured WLED device with colors from the current image. When an image yields one or two distinct colors, Chameleon repeats them to fill the remaining slots; it never invents new hues or leaves old colors there. It sends these colors only when every segment already uses a color-slot palette with a palette-aware effect, preserving the selected effect and palette. Otherwise the light receives its ordinary Chameleon color. The switch starts off and does not affect non-WLED lights or manual colors.
+- Turn on **Send Palette to WLED** in Configure to fill all three color slots on every segment of a configured WLED device with colors from the current image. When an image yields one or two distinct colors, Chameleon repeats them to fill the remaining slots; it never invents new hues or leaves old colors there. It sends these colors only when every segment already uses a color-slot palette with a palette-aware effect, preserving the selected effect and palette. Otherwise the light receives its ordinary Chameleon color. The switch starts off and does not affect non-WLED lights or manual colors.
 
 Album artwork is kept in memory and is limited to 10 MB per download. Album Art stays selected until you choose another effect, a manual color, or turn the light off. A new cover transitions to its palette over the selected WLED transition time and then holds those colors. If artwork is unavailable or the player exposes a recognized placeholder, the existing colors remain in place and the Chameleon light reports `last_error`; a later artwork change retries automatically. Chameleon accepts the artwork exposed by the configured media player, including Eversolo's Squeeze Connect artwork. Random selects image scenes only.
 
@@ -69,13 +69,13 @@ For the Common Area setup, the default entity IDs are `button.chameleon_common_a
 
 ### Light Entities
 
-The integration adds a **Light Entities** device linked to the Chameleon device,
-with an Enabled toggle and Brightness slider for each configured light. WLED
+The Chameleon device includes a toggle and brightness multiplier slider for each
+configured light in its Configuration panel. Both controls use only the light’s name. WLED
 master lights are omitted; configured individual segments have their own controls.
-Turning Enabled off immediately turns the light off and excludes it from later
+Turning a light’s toggle off immediately turns the light off and excludes it from later
 Chameleon scene, palette, brightness, and power commands. Turning it back on
 restores participation in the active group scene. These settings survive restarts.
 
 Brightness is a 0–100% multiplier of group brightness: a group at 80% and a light
-at 50% produce 40% brightness. Defaults are Enabled and 100%. A 0% multiplier
+at 50% produce 40% brightness. Defaults are on and 100%. A 0% multiplier
 keeps the light dark while leaving it enabled for palette updates.

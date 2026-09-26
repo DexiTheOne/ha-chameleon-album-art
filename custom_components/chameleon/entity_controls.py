@@ -1,10 +1,12 @@
 """Persistent controls for individual configured lights."""
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.components.number import NumberEntity, NumberMode
+from homeassistant.const import EntityCategory
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import device_registry as dr
 
-from .const import DOMAIN
+from .const import CONF_LIGHT_ENTITIES, CONF_LIGHT_ENTITY, DOMAIN
+from .helpers import get_chameleon_device_name
 
 OPTIONS_KEY = "light_entity_controls"
 
@@ -31,6 +33,7 @@ def settings(entry, entity_id):
 
 
 class LightEntityControl:
+    _attr_entity_category = EntityCategory.CONFIG
     _attr_has_entity_name = True
     _attr_should_poll = False
 
@@ -51,17 +54,19 @@ class LightEntityControl:
             else:
                 name = device_name
         name = name or entity_id.split(".", 1)[-1].replace("_", " ").title()
-        self._attr_name = f"{name} {suffix.title()}"
+        self._attr_name = name
         self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_{entity_id}_{suffix}"
 
     @property
     def device_info(self):
+        entities = self._entry.data.get(CONF_LIGHT_ENTITIES) or [
+            self._entry.data.get(CONF_LIGHT_ENTITY, self._target)
+        ]
         return {
-            "identifiers": {(DOMAIN, f"{self._entry.entry_id}_light_entities")},
-            "name": "Light Entities",
+            "identifiers": {(DOMAIN, self._entry.entry_id)},
+            "name": get_chameleon_device_name(self.hass, entities),
             "manufacturer": "Chameleon",
-            "model": "Individual light controls",
-            "via_device": (DOMAIN, self._entry.entry_id),
+            "model": "Scene Selector",
         }
 
     async def _save(self, key, value):

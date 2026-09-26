@@ -107,7 +107,7 @@ async def test_wled_segment_zero_is_controlled_and_all_managed_segments_power_of
 def test_control_names_use_registry_when_target_state_not_loaded():
     hass = MagicMock()
     hass.states.get.return_value = None
-    entry = SimpleNamespace(entry_id="entry", options={})
+    entry = SimpleNamespace(entry_id="entry", options={}, data={})
     with patch("custom_components.chameleon.entity_controls.er.async_get") as registry, patch(
         "custom_components.chameleon.entity_controls.dr.async_get"
     ) as devices:
@@ -116,7 +116,27 @@ def test_control_names_use_registry_when_target_state_not_loaded():
         )
         devices.return_value.async_get.return_value = SimpleNamespace(name_by_user=None, name="Media Console LED Strip")
         control = LightEntitySwitch(hass, entry, "light.one", "enabled")
-        assert control._attr_name == "Media Console LED Strip Segment 1 Enabled"
+        assert control._attr_name == "Media Console LED Strip Segment 1"
         registry.return_value.async_get.return_value.original_name = None
         control = LightEntityBrightness(hass, entry, "light.zero", "brightness")
-        assert control._attr_name == "Media Console LED Strip Brightness"
+        assert control._attr_name == "Media Console LED Strip"
+
+
+async def test_palette_setting_in_configure_can_be_changed():
+    from custom_components.chameleon.config_flow import ChameleonOptionsFlow
+    flow = ChameleonOptionsFlow()
+    flow.config_entry = SimpleNamespace(options={"send_palette_to_wled": True}, data={})
+    result = await flow.async_step_init({"normalize_brightness": True, "send_palette_to_wled": False})
+    assert result["data"]["send_palette_to_wled"] is False
+    form = await flow.async_step_init()
+    assert any(str(key) == "send_palette_to_wled" for key in form["data_schema"].schema)
+
+
+
+def test_individual_controls_use_existing_chameleon_device():
+    hass = MagicMock()
+    entry = SimpleNamespace(entry_id="entry", options={}, data={"light_entities": ["light.one"]})
+    with patch("custom_components.chameleon.entity_controls.get_chameleon_device_name", return_value="Common Area"):
+        control = LightEntitySwitch(hass, entry, "light.one", "enabled")
+        assert control.device_info["identifiers"] == {(DOMAIN, "entry")}
+        assert "via_device" not in control.device_info

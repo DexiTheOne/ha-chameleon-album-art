@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr
 
 from .const import (
     ATTR_SCENE_NAME,
@@ -77,7 +78,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
              ``transition_style``; renames the ``animation_speed`` key in
              entry.data to ``transition``.
     """
-    target_version = 5
+    target_version = 6
     _LOGGER.info(
         "Migrating Chameleon config entry %s from v%d to v%d",
         entry.entry_id,
@@ -159,6 +160,22 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 entity_registry.async_remove(ent.entity_id)
         options = {key: value for key, value in entry.options.items() if key not in ("animation_enabled", "transition_style")}
         hass.config_entries.async_update_entry(entry, data={key: value for key, value in entry.data.items() if key not in ("animation_enabled", "transition_style")}, options=options, version=5)
+
+    if entry.version < 6:
+        retired_palette = f"{DOMAIN}_{entry.entry_id}_send_palette_to_wled"
+        for ent in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
+            if ent.unique_id == retired_palette:
+                entity_registry.async_remove(ent.entity_id)
+        device_registry = dr.async_get(hass)
+        parent = device_registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+        child = device_registry.async_get_device(identifiers={(DOMAIN, f"{entry.entry_id}_light_entities")})
+        if parent is not None and child is not None:
+            for ent in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
+                if ent.device_id == child.id:
+                    entity_registry.async_update_entity(ent.entity_id, device_id=parent.id)
+            if not er.async_entries_for_device(entity_registry, child.id):
+                device_registry.async_remove_device(child.id)
+        hass.config_entries.async_update_entry(entry, version=6)
 
     return True
 

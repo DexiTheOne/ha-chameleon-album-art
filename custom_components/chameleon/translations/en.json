@@ -32,11 +32,13 @@
         "description": "Choose an optional album-art source and how extracted colors appear on LEDs.",
         "data": {
           "media_player_entity": "Album Art Media Player",
-          "normalize_brightness": "Normalize Brightness"
+          "normalize_brightness": "Normalize Brightness",
+          "send_palette_to_wled": "Send Palette to WLED"
         },
         "data_description": {
           "media_player_entity": "Artwork changes update the configured Chameleon lights only while the Album Art effect is active.",
-          "normalize_brightness": "Change extracted RGB values to bright, vibrant colors with a similar output level. The Home Assistant brightness slider is unchanged."
+          "normalize_brightness": "Change extracted RGB values to bright, vibrant colors with a similar output level. The Home Assistant brightness slider is unchanged.",
+          "send_palette_to_wled": "Send three scene colors to each enabled WLED segment. When off, only its primary color is updated."
         }
       }
     }
@@ -48,9 +50,6 @@
       },
       "interesting_colors": {
         "name": "Only Interesting Colors"
-      },
-      "send_palette_to_wled": {
-        "name": "Send Palette information to WLED"
       }
     },
     "select": {

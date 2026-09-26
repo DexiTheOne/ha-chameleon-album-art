@@ -12,10 +12,8 @@ from .const import (
     CONF_LIGHT_ENTITIES,
     CONF_LIGHT_ENTITY,
     CONF_RANDOMIZE_COLOR_ASSIGNMENT,
-    CONF_SEND_PALETTE_TO_WLED,
     DEFAULT_INTERESTING_COLORS,
     DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT,
-    DEFAULT_SEND_PALETTE_TO_WLED,
     DOMAIN,
 )
 from .entity_controls import LightEntitySwitch, controlled_entities
@@ -33,7 +31,6 @@ async def async_setup_entry(
         *[LightEntitySwitch(hass, entry, entity, "enabled") for entity in controlled_entities(hass, light_entities)],
         ChameleonRandomizeColorAssignmentSwitch(hass, entry, light_entities),
         ChameleonInterestingColorsSwitch(hass, entry, light_entities),
-        ChameleonWledPaletteSwitch(hass, entry, light_entities),
     ], True)
 
 
@@ -136,55 +133,4 @@ class ChameleonInterestingColorsSwitch(SwitchEntity):
         light = self.hass.data.get(DOMAIN, {}).get(self._entry.entry_id, {}).get("chameleon_light")
         if light is not None:
             light.set_interesting_colors(enabled)
-        self.async_write_ha_state()
-
-
-class ChameleonWledPaletteSwitch(SwitchEntity):
-    """Send each WLED light three scene colors through its JSON API."""
-
-    _attr_has_entity_name = True
-    _attr_translation_key = "send_palette_to_wled"
-    _attr_icon = "mdi:palette"
-
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, light_entities: list[str]) -> None:
-        self.hass = hass
-        self._entry = entry
-        self._light_entities = light_entities
-        self._enabled = entry.options.get(
-            CONF_SEND_PALETTE_TO_WLED,
-            entry.data.get(CONF_SEND_PALETTE_TO_WLED, DEFAULT_SEND_PALETTE_TO_WLED),
-        )
-        base_name = get_entity_base_name(hass, light_entities)
-        self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_send_palette_to_wled"
-        self.entity_id = f"switch.chameleon_{base_name}_send_palette_to_wled"
-
-    @property
-    def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, self._entry.entry_id)},
-            "name": get_chameleon_device_name(self.hass, self._light_entities),
-            "manufacturer": "Chameleon",
-            "model": "Scene Selector",
-        }
-
-    @property
-    def is_on(self) -> bool:
-        return self._enabled
-
-    async def async_turn_on(self, **kwargs) -> None:
-        await self._set_enabled(True)
-
-    async def async_turn_off(self, **kwargs) -> None:
-        await self._set_enabled(False)
-
-    async def _set_enabled(self, enabled: bool) -> None:
-        if self._enabled == enabled:
-            return
-        self.hass.config_entries.async_update_entry(
-            self._entry, options={**self._entry.options, CONF_SEND_PALETTE_TO_WLED: enabled}
-        )
-        self._enabled = enabled
-        light = self.hass.data.get(DOMAIN, {}).get(self._entry.entry_id, {}).get("chameleon_light")
-        if light is not None:
-            light.set_send_palette_to_wled(enabled)
         self.async_write_ha_state()

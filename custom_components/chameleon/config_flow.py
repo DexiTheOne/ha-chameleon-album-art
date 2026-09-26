@@ -41,7 +41,7 @@ from .entity_controls import OPTIONS_KEY
 class ChameleonConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Chameleon."""
 
-    VERSION = 5
+    VERSION = 6
 
     @staticmethod
     @callback
@@ -114,10 +114,10 @@ class ChameleonOptionsFlow(OptionsFlowWithReload):
                 CONF_RANDOMIZE_COLOR_ASSIGNMENT,
                 self.config_entry.data.get(CONF_RANDOMIZE_COLOR_ASSIGNMENT, DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT),
             )
-            options[CONF_SEND_PALETTE_TO_WLED] = self.config_entry.options.get(
+            options.setdefault(CONF_SEND_PALETTE_TO_WLED, self.config_entry.options.get(
                 CONF_SEND_PALETTE_TO_WLED,
                 self.config_entry.data.get(CONF_SEND_PALETTE_TO_WLED, DEFAULT_SEND_PALETTE_TO_WLED),
-            )
+            ))
             for key in (CONF_TRANSITION, CONF_WLED_BLEND_STYLE, OPTIONS_KEY):
                 if key in self.config_entry.options:
                     options[key] = self.config_entry.options[key]
@@ -141,5 +141,9 @@ class ChameleonOptionsFlow(OptionsFlowWithReload):
             data_schema=vol.Schema({
                 schema_key: EntitySelector(EntitySelectorConfig(domain="media_player")),
                 vol.Required(CONF_NORMALIZE_BRIGHTNESS, default=normalize_brightness): BooleanSelector(),
+                vol.Required(CONF_SEND_PALETTE_TO_WLED, default=self.config_entry.options.get(
+                    CONF_SEND_PALETTE_TO_WLED,
+                    self.config_entry.data.get(CONF_SEND_PALETTE_TO_WLED, DEFAULT_SEND_PALETTE_TO_WLED),
+                )): BooleanSelector(),
             }),
         )

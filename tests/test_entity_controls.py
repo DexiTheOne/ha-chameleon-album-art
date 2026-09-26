@@ -69,8 +69,10 @@ async def test_wled_excluded_segments_receive_no_palette_or_power_commands():
         assert [segment["id"] for segment in session.posts[0]["seg"]] == [1]
         assert session.posts[0]["seg"][0]["bri"] == 102
         assert await send_wled_power_off(hass, "light.segment", 1, 4, ["light.segment"])
-        assert session.posts[1]["seg"] == [{"id": 1, "on": False}]
-        assert "on" not in session.posts[1]
+        assert [segment["id"] for segment in session.posts[1]["seg"]] == [1]
+        assert [segment["id"] for segment in session.posts[2]["seg"]] == [1]
+        assert session.posts[2]["seg"][0]["on"] is False
+        assert "on" not in session.posts[1] and "on" not in session.posts[2]
 
 
 async def test_configure_preserves_individual_overrides():
@@ -103,9 +105,10 @@ async def test_wled_segment_zero_is_controlled_and_all_managed_segments_power_of
         )
         assert session.posts[0]["seg"] == [{"id": 0, "on": False, "bri": 0, "col": [[255, 0, 0]]}]
         assert await send_wled_power_off(hass, "light.zero", 1, 4, list(entities))
-        assert session.posts[1]["seg"] == [{"id": 0, "on": False}, {"id": 1, "on": False}]
+        assert [segment["id"] for segment in session.posts[1]["seg"]] == [0, 1]
         assert "on" not in session.posts[1]
-        assert session.posts[2] == {"on": False, "tt": 0}
+        assert session.posts[2]["on"] is False and session.posts[2]["tt"] == 0
+        assert all(segment["on"] is False for segment in session.posts[2]["seg"])
 
 
 def test_control_names_use_registry_when_target_state_not_loaded():

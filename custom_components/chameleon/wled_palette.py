@@ -263,23 +263,40 @@ async def send_wled_power_off(
             if not ids:
                 return False
         whole_device = members is None or set(ids) == {segment["id"] for segment in segments}
-        # Animate segment power while master brightness stays unchanged. Some
-        # WLED versions blank a frame when global power changes before the
-        # spatial transition snapshot exists. Cut master power only afterward.
+        # Segment off flags bypass spatial blending on some WLED builds.
+        # Transition the visible effect to solid black while power stays on,
+        # then restore the saved effect/colors behind off flags. This also
+        # avoids the global-power snapshot race without losing the animation.
         duration = round(max(0, min(65, transition)) * 10) / 10
-        payload = {
-            "seg": [{"id": segment_id, "on": False} for segment_id in ids],
-            "tt": round(duration * 10),
+        saved_fields = ("id", "col", "fx", "pal", "sx", "ix", "c1", "c2", "c3",
+                        "o1", "o2", "o3", "si", "m12", "rev", "mi", "rY", "mY", "tp")
+        selected_segments = [segment for segment in segments if segment["id"] in ids]
+        final_payload = {
+            **({"on": False} if whole_device else {}),
+            "seg": [{**{key: segment[key] for key in saved_fields if key in segment}, "on": False}
+                    for segment in selected_segments],
+            "tt": 0,
             "bs": _transition_style(segments, blend_mode),
         }
-        async with session.post(f"http://{host}/json/state", json=payload, timeout=5) as response:
-            response.raise_for_status()
         if duration:
-            await asyncio.sleep(duration)
-        if whole_device:
-            async with session.post(
-                f"http://{host}/json/state", json={"on": False, "tt": 0}, timeout=5,
-            ) as response:
+            payload = {
+                "seg": [{"id": segment["id"], "col": [[0, 0, 0, 0]] * 3, "fx": 0, "pal": 0}
+                        for segment in selected_segments if segment.get("on", True)],
+                "tt": round(duration * 10),
+                "bs": _transition_style(segments, blend_mode),
+            }
+            try:
+                if payload["seg"]:
+                    async with session.post(f"http://{host}/json/state", json=payload, timeout=5) as response:
+                        response.raise_for_status()
+                    await asyncio.sleep(duration)
+            finally:
+                # Even cancellation must not leave temporary black colors or
+                # Solid installed in place of the user's effect and palette.
+                async with session.post(f"http://{host}/json/state", json=final_payload, timeout=5) as response:
+                    response.raise_for_status()
+        else:
+            async with session.post(f"http://{host}/json/state", json=final_payload, timeout=5) as response:
                 response.raise_for_status()
         return True
     except Exception as err:

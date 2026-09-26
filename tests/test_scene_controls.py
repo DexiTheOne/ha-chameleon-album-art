@@ -11,7 +11,7 @@ from homeassistant.components.select import SelectEntity
 
 button_module = MagicMock()
 button_module.ButtonEntity = SelectEntity
-sys.modules.setdefault("homeassistant.components.button", button_module)
+sys.modules["homeassistant.components.button"] = button_module
 exceptions_module = MagicMock()
 exceptions_module.HomeAssistantError = RuntimeError
 sys.modules.setdefault("homeassistant.exceptions", exceptions_module)
@@ -77,12 +77,13 @@ async def test_listener_tracks_actual_light_id_and_is_removed(controls):
 
 
 async def test_unavailable_light_and_no_random_images(controls):
+    from custom_components.chameleon.scene_control import HomeAssistantError
     hass, light, scene, button = controls
     light.effect_list = ["Random", "Album Art"]
     assert not button.available
     light.available = False
     assert not scene.available
-    with pytest.raises(RuntimeError):
+    with pytest.raises(HomeAssistantError):
         await button.async_press()
     hass.data[DOMAIN]["entry-1"].pop("chameleon_light")
     assert not button.available

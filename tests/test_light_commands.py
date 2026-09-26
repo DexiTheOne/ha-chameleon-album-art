@@ -11,7 +11,7 @@ from custom_components.chameleon.light_controller import LightResult
 
 
 @pytest.fixture
-def group():
+async def group():
     hass = MagicMock()
     hass.data = {DOMAIN: {"entry": {"transition": 0}}}
     hass.services.async_call = AsyncMock()
@@ -27,7 +27,10 @@ def group():
     with patch("custom_components.chameleon.light.controlled_entities", side_effect=lambda hass, entities: entities), patch(
         "custom_components.chameleon.light.wled_entry_id", return_value=None
     ):
-        yield light
+        try:
+            yield light
+        finally:
+            await light.async_will_remove_from_hass()
 
 
 async def test_manual_color_uses_multiplier_and_excludes_disabled_member(group):

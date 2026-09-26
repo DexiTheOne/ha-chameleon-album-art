@@ -29,7 +29,9 @@ import random
 from collections import deque
 from collections.abc import Callable
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
+from tempfile import TemporaryFile
 from typing import Any, ClassVar
 from urllib.parse import urlsplit
 
@@ -78,7 +80,6 @@ from .const import (
     DEFAULT_WLED_BLEND_STYLE,
     DOMAIN,
     IMAGE_DIRECTORY,
-    MAX_ALBUM_ART_BYTES,
     SCENE_ALBUM_ART,
     SCENE_OFF,
     SCENE_RANDOM,
@@ -105,6 +106,25 @@ def _is_placeholder_art(entity_picture: str) -> bool:
     """Recognize explicit placeholder paths without inspecting token-bearing queries."""
     path = urlsplit(entity_picture).path.lower().rstrip("/")
     return path.startswith("/static/icons/") or path.rsplit("/", 1)[-1] in _PLACEHOLDER_ART_NAMES
+
+
+class ArtworkDownloadError(ValueError):
+    """An artwork validation failure with a safe, URL-free reason."""
+
+
+def _prepare_downloaded_artwork(source) -> bytes:
+    """Decode and shrink artwork in an executor, preserving aspect ratio."""
+    from PIL import Image, ImageOps
+
+    try:
+        source.seek(0)
+        with Image.open(source) as image:
+            image.thumbnail((1024, 1024))
+            with ImageOps.exif_transpose(image) as oriented, oriented.convert("RGB") as rgb, BytesIO() as output:
+                rgb.save(output, format="PNG")
+                return output.getvalue()
+    except Exception as err:
+        raise ArtworkDownloadError("Artwork response is not a supported, valid image") from err
 
 
 async def async_setup_entry(
@@ -752,8 +772,9 @@ class ChameleonLight(LightEntity):
         except Exception as err:
             # Never include the artwork URL because media proxy URLs can carry
             # authentication tokens.
-            self._last_error = f"Unable to download album artwork: {type(err).__name__}"
-            _LOGGER.warning("Unable to download album artwork for %s: %s", self._media_player_entity, type(err).__name__)
+            reason = str(err) if isinstance(err, ArtworkDownloadError) else type(err).__name__
+            self._last_error = f"Unable to download album artwork: {reason}"
+            _LOGGER.warning("Unable to download album artwork for %s: %s", self._media_player_entity, reason)
             return
 
         try:
@@ -802,32 +823,29 @@ class ChameleonLight(LightEntity):
         self._last_error = None if result.all_succeeded or not result.results else f"Partial failure: {result.failed_count}/{len(result.results)} lights failed"
 
     async def _async_download_artwork(self, entity_picture: str) -> bytes:
-        """Download artwork into bounded memory without persisting its token or bytes."""
+        """Download and resize artwork without retaining its token or source file."""
         if entity_picture.startswith(("http://", "https://")):
             artwork_url = entity_picture
         elif entity_picture.startswith("/"):
             artwork_url = f"{get_url(self.hass, prefer_external=False).rstrip('/')}{entity_picture}"
         else:
-            raise ValueError("Unsupported artwork URL")
+            raise ArtworkDownloadError("Unsupported artwork URL")
 
         session = async_get_clientsession(self.hass)
-        async with session.get(artwork_url, timeout=15) as response:
+        async with session.get(artwork_url, timeout=60) as response:
             response.raise_for_status()
-            content_type = response.headers.get("Content-Type", "").split(";", 1)[0]
-            if content_type and not content_type.startswith("image/"):
-                raise ValueError("Artwork response is not an image")
-            content_length = response.headers.get("Content-Length")
-            if content_length and int(content_length) > MAX_ALBUM_ART_BYTES:
-                raise ValueError("Artwork exceeds size limit")
-            image_data = bytearray()
-            async for chunk in response.content.iter_chunked(64 * 1024):
-                image_data.extend(chunk)
-                if len(image_data) > MAX_ALBUM_ART_BYTES:
-                    raise ValueError("Artwork exceeds size limit")
-            image_bytes = bytes(image_data)
-            if not image_bytes:
-                raise ValueError("Artwork response is empty")
-            return image_bytes
+            # MIME and Content-Length are advisory: AirPlay/app artwork may
+            # carry generic headers and large covers are decoded at reduced size.
+            # Anonymous temporary storage avoids retaining the full download in
+            # RAM or leaving artwork files behind, including on cancellation.
+            with TemporaryFile() as source:
+                size = 0
+                async for chunk in response.content.iter_chunked(64 * 1024):
+                    await self.hass.async_add_executor_job(source.write, chunk)
+                    size += len(chunk)
+                if not size:
+                    raise ArtworkDownloadError("Artwork response is empty")
+                return await self.hass.async_add_executor_job(_prepare_downloaded_artwork, source)
 
     async def _apply_manual_color(self, rgb_color: RGBColor) -> None:
         """Apply a manual color using the same exclusion and brightness rules."""

@@ -381,3 +381,78 @@ async def test_wled_shutdown_and_ordinary_lights_start_together(group):
         await group.async_turn_off()
     assert ordinary_started.is_set()
     assert not group.is_on
+
+
+@pytest.mark.parametrize("content_type", ["application/octet-stream", "text/plain", "image/png", ""])
+async def test_artwork_download_validates_image_bytes_not_mime_header(group, content_type):
+    from io import BytesIO
+
+    from PIL import Image
+
+    output = BytesIO()
+    Image.new("RGB", (8, 8), (10, 100, 200)).save(output, format="PNG")
+    data = output.getvalue()
+    response = MagicMock()
+    response.headers = {"Content-Type": content_type, "Content-Length": str(len(data))}
+
+    async def chunks(size):
+        yield data[:10]
+        yield data[10:]
+
+    response.content.iter_chunked = chunks
+    session = MagicMock()
+    session.get.return_value.__aenter__ = AsyncMock(return_value=response)
+
+    async def execute(function, *args):
+        return function(*args)
+
+    group.hass.async_add_executor_job = execute
+    with patch("custom_components.chameleon.light.async_get_clientsession", return_value=session):
+        result = await group._async_download_artwork("https://example.test/cover")
+        with Image.open(BytesIO(result)) as image:
+            assert image.size == (8, 8)
+            assert image.getpixel((0, 0)) == (10, 100, 200)
+
+
+@pytest.mark.parametrize("data,headers,reason", [
+    (b"<html>login</html>", {"Content-Type": "image/png"}, "not a supported, valid image"),
+    (b"", {}, "empty"),
+])
+async def test_artwork_download_rejects_invalid_and_empty_body(group, data, headers, reason):
+    from custom_components.chameleon.light import ArtworkDownloadError
+
+    response = MagicMock()
+    response.headers = headers
+
+    async def chunks(size):
+        yield data
+
+    response.content.iter_chunked = chunks
+    session = MagicMock()
+    session.get.return_value.__aenter__ = AsyncMock(return_value=response)
+
+    async def execute(function, *args):
+        return function(*args)
+
+    group.hass.async_add_executor_job = execute
+    with patch("custom_components.chameleon.light.async_get_clientsession", return_value=session), pytest.raises(ArtworkDownloadError, match=reason):
+        await group._async_download_artwork("https://example.test/cover?token=private")
+
+
+@pytest.mark.parametrize("format", ["BMP", "JPEG", "PNG", "WEBP", "GIF", "TIFF"])
+def test_large_artwork_is_resized_and_decoded_across_formats(format):
+    from io import BytesIO
+
+    from PIL import Image
+
+    from custom_components.chameleon.light import _prepare_downloaded_artwork
+
+    with BytesIO() as source:
+        with Image.new("RGB", (2400, 1800), (10, 100, 200)) as image:
+            image.save(source, format=format)
+        if format == "BMP":
+            assert source.tell() > 10 * 1024 * 1024
+        result = _prepare_downloaded_artwork(source)
+    with Image.open(BytesIO(result)) as image:
+        assert image.size == (1024, 768)
+        assert image.mode == "RGB"

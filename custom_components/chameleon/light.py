@@ -57,6 +57,7 @@ from .color_extractor import (
     clamp_rgb_color,
     extract_color_palette,
     extract_color_palette_bytes,
+    extract_palette_coverage,
     extract_white_fraction,
     normalize_palette_brightness,
     select_interesting_colors,
@@ -281,10 +282,12 @@ class ChameleonLight(LightEntity):
         self._last_wled_blend_mode = WLED_BLEND_STYLES.get(style, WLED_BLEND_STYLES[DEFAULT_WLED_BLEND_STYLE])
         return self._last_wled_blend_mode
 
-    def _prepare_palette(self, colors: list[RGBColor], white_fraction: float = 0.0) -> list[RGBColor]:
+    def _prepare_palette(
+        self, colors: list[RGBColor], white_fraction: float = 0.0, coverage: list[float] | None = None,
+    ) -> list[RGBColor]:
         """Adjust source-image RGB values before static or animated output."""
         if self._interesting_colors:
-            colors = select_interesting_colors(colors)
+            colors = select_interesting_colors(colors, white_fraction, coverage)
             colors = balance_mostly_white_palette(colors, white_fraction, len(self._light_entities))
         if self._normalize_brightness:
             return normalize_palette_brightness(colors)
@@ -797,14 +800,17 @@ class ChameleonLight(LightEntity):
                 image_bytes,
                 color_count=max(len(self._light_entities), DEFAULT_COLOR_COUNT),
             )
-            white_fraction = await extract_white_fraction(self.hass, image_bytes) if self._interesting_colors else 0.0
+            white_fraction, coverage = await asyncio.gather(
+                extract_white_fraction(self.hass, image_bytes),
+                extract_palette_coverage(self.hass, image_bytes, colors),
+            ) if self._interesting_colors else (0.0, None)
         finally:
             # Only palette/white-coverage data is needed for device updates.
             del image_bytes
         if not colors and white_fraction < 0.7:
             self._last_error = "Unable to extract colors from album artwork"
             return
-        colors = self._prepare_palette(colors, white_fraction)
+        colors = self._prepare_palette(colors, white_fraction, coverage)
         if not colors:
             self._last_error = "No interesting colors found in album artwork"
             return
@@ -908,12 +914,15 @@ class ChameleonLight(LightEntity):
             image_path,
             color_count=max(num_lights, DEFAULT_COLOR_COUNT),
         )
-        white_fraction = await extract_white_fraction(self.hass, image_path) if self._interesting_colors else 0.0
+        white_fraction, coverage = await asyncio.gather(
+            extract_white_fraction(self.hass, image_path),
+            extract_palette_coverage(self.hass, image_path, colors),
+        ) if self._interesting_colors else (0.0, None)
         if not colors and white_fraction < 0.7:
             _LOGGER.error("Failed to extract color palette from %s", image_path)
             return ApplyColorsResult()
 
-        colors = self._prepare_palette(colors, white_fraction)
+        colors = self._prepare_palette(colors, white_fraction, coverage)
 
         if not colors:
             self._last_error = "No interesting colors found in image scene"

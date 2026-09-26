@@ -237,24 +237,24 @@ def test_mostly_white_artwork_assigns_white_to_most_lights():
     white_fraction = _sync_white_fraction(buffer.getvalue())
     assert white_fraction >= 0.85
     colors = balance_mostly_white_palette(select_interesting_colors([(225, 25, 40)]), white_fraction, 7)
-    assert colors == [(255, 255, 255)] * 5 + [(225, 25, 40)] * 2
+    assert colors == [(255, 255, 255)] * 6 + [(225, 25, 40)]
     assert balance_mostly_white_palette([(225, 25, 40)], white_fraction, 1) == [(255, 255, 255)]
     assert balance_mostly_white_palette([(225, 25, 40)], 0.4, 7) == [(225, 25, 40)]
 
 
-def test_interesting_colors_keeps_all_nonblack_shades():
+def test_interesting_colors_ranks_muted_dark_hues_above_skin_tones():
     """All non-black shades remain available, including muted and repeated hues."""
     colors = [(201, 228, 244), (23, 25, 27), (231, 161, 147),
               (119, 90, 84), (234, 173, 157), (156, 122, 110), (121, 135, 143)]
-    assert select_interesting_colors(colors) == colors
+    assert select_interesting_colors(colors) == [colors[0], colors[1], colors[6]]
     bright = normalize_palette_brightness(select_interesting_colors(colors))
     assert bright[0][2] == 255 and bright[0][0] < bright[0][2]
 
 
-def test_interesting_colors_keeps_skin_tones_and_bright_orange():
+def test_interesting_colors_prefers_blue_and_vivid_orange_to_skin_tones():
     colors = [(220, 180, 150), (190, 135, 100), (160, 110, 85),
               (40, 110, 180), (255, 150, 20)]
-    assert select_interesting_colors(colors) == colors
+    assert select_interesting_colors(colors) == [colors[3], colors[4]]
 
 
 @pytest.mark.parametrize("fails", [False, True])
@@ -299,5 +299,68 @@ def test_black_white_artwork_quantized_palette_normalizes_to_white():
 
 
 @pytest.mark.parametrize("color", [(0, 0, 0), (4, 4, 4), (12, 12, 12), (60, 60, 60), (132, 132, 132), (116, 115, 116)])
-def test_interesting_colors_rejects_dark_and_midtone_neutral_grays(color):
-    assert select_interesting_colors([color]) == []
+def test_neutral_grays_are_low_ranked_fallbacks_not_selected_over_color(color):
+    assert select_interesting_colors([color, (10, 180, 240)]) == [(10, 180, 240)]
+    assert select_interesting_colors([color]) == ([] if color == (0, 0, 0) else [color])
+
+
+def test_colorful_palette_selects_saturated_hues_over_white_gray_dark_and_skin():
+    source = [(230, 230, 230), (80, 80, 80), (13, 27, 20), (220, 180, 150), (20, 200, 240), (240, 20, 180)]
+    assert select_interesting_colors(source, white_fraction=0.25) == [source[4], source[5]]
+
+
+def test_mostly_white_palette_ranks_white_high_and_retains_a_dark_accent():
+    source = [(13, 27, 20), (220, 180, 150), (230, 230, 230), (80, 80, 80)]
+    selected = select_interesting_colors(source, white_fraction=0.85)
+    assert selected == [source[2], source[0]]
+    assert balance_mostly_white_palette(selected, 0.85, 7) == [(255, 255, 255)] * 6 + [source[0]]
+
+
+def test_dark_chromatic_palette_outranks_skin_without_brightness_rejection():
+    source = [(220, 180, 150), (13, 27, 20), (3, 5, 12), (119, 90, 84)]
+    assert select_interesting_colors(source) == [source[1], source[2]]
+
+
+def test_skin_tones_remain_available_when_no_stronger_candidate_exists():
+    source = [(80, 80, 80), (220, 180, 150), (119, 90, 84)]
+    assert select_interesting_colors(source) == source[1:]
+
+
+def test_ranking_keeps_low_ranked_candidates_and_original_order_within_tiers():
+    from custom_components.chameleon.color_extractor import rank_palette_colors
+
+    source = [(80, 80, 80), (220, 180, 150), (13, 27, 20), (230, 230, 230), (20, 200, 240), (240, 20, 180)]
+    assert rank_palette_colors(source) == [(source[4], 90), (source[5], 90), (source[2], 60), (source[3], 50), (source[1], 30), (source[0], 10)]
+
+
+def test_mostly_white_cover_distributes_multiple_high_ranked_accents():
+    source = [(240, 20, 180), (20, 200, 240), (230, 230, 230)]
+    selected = select_interesting_colors(source, white_fraction=0.7)
+    assert selected[0] == source[2]
+    assert balance_mostly_white_palette(selected, 0.7, 7) == [(255, 255, 255)] * 5 + source[:2]
+
+
+def test_saturated_color_priority_uses_measured_pixel_coverage():
+    from custom_components.chameleon.color_extractor import _sync_palette_coverage
+
+    red, blue, skin = (240, 20, 50), (20, 100, 240), (220, 180, 150)
+    image = Image.new("RGB", (100, 10), red)
+    for x in range(80, 100):
+        for y in range(10):
+            image.putpixel((x, y), blue)
+    source = BytesIO()
+    image.save(source, format="PNG")
+    colors = [blue, skin, red]
+    coverage = _sync_palette_coverage(source.getvalue(), colors)
+    assert coverage == pytest.approx([0.2, 0.0, 0.8])
+    assert select_interesting_colors(colors, coverage=coverage) == [red, blue]
+
+
+def test_coverage_cannot_promote_skin_over_real_dark_hues():
+    skin, dark = (220, 180, 150), (13, 27, 20)
+    assert select_interesting_colors([skin, dark], coverage=[0.95, 0.05]) == [dark]
+
+
+def test_equal_rank_and_coverage_retains_original_order():
+    first, second = (240, 20, 50), (20, 100, 240)
+    assert select_interesting_colors([first, second], coverage=[0.5, 0.5]) == [first, second]

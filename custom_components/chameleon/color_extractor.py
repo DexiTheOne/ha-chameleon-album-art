@@ -37,31 +37,67 @@ def _normalize_palette(colors: list[RGBColor]) -> list[RGBColor]:
     return [clamp_rgb_color(color) for color in colors]
 
 
-def select_interesting_colors(colors: list[RGBColor]) -> list[RGBColor]:
-    """Reject black and neutral gray while retaining white and real color."""
-    result = []
-    for color in colors:
-        normalized = clamp_rgb_color(color)
-        low, high = min(normalized), max(normalized)
-        if high == 0:
+def _is_skin_tone(color: RGBColor) -> bool:
+    """Rank common skin-like swatches conservatively; this is not face detection."""
+    r, g, b = color
+    hue, saturation, value = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+    return r > g > b and hue <= 55 / 360 and 0.10 <= saturation <= 0.65 and value >= 0.20
+
+
+def rank_palette_colors(
+    colors: list[RGBColor], white_fraction: float = 0.0, coverage: list[float] | None = None,
+) -> list[tuple[RGBColor, int]]:
+    """Score candidates by usefulness, then measured image coverage within tiers."""
+    ranked = []
+    for index, color in enumerate(colors):
+        color = clamp_rgb_color(color)
+        _, saturation, value = colorsys.rgb_to_hsv(*(channel / 255 for channel in color))
+        if value == 0:
             continue
-        if (high - low) / high <= 0.03 and not _is_bright_neutral(normalized):
-            continue
-        result.append(normalized)
-    return result
+        if _is_bright_neutral(color):
+            score = 100 if white_fraction >= 0.7 else 50
+        elif saturation <= 0.03:
+            score = 10
+        elif _is_skin_tone(color):
+            score = 30
+        elif saturation >= 0.35 and value >= 0.25:
+            score = 90
+        else:
+            # No brightness floor: genuinely dark hues remain useful candidates.
+            score = 60
+        covered = coverage[index] if coverage is not None and index < len(coverage) else 0.0
+        ranked.append((color, score, covered))
+    return [(color, score) for color, score, _ in sorted(ranked, key=lambda item: (item[1], item[2]), reverse=True)]
+
+
+def select_interesting_colors(
+    colors: list[RGBColor], white_fraction: float = 0.0, coverage: list[float] | None = None,
+) -> list[RGBColor]:
+    """Use the strongest available tier, with low-ranked shades as fallbacks."""
+    ranked = rank_palette_colors(colors, white_fraction, coverage)
+    if not ranked:
+        return []
+    cutoff = max(1, ranked[0][1] - 15)
+    selected = [color for color, score in ranked if score >= cutoff]
+    if white_fraction >= 0.7:
+        # Mostly white covers can still carry a genuine dark/color accent.
+        # Skin/gray swatches only become accents when there is no better hue.
+        accents = [(color, score) for color, score in ranked if not _is_bright_neutral(color) and score >= 30]
+        if accents:
+            accent_cutoff = accents[0][1] - 15
+            selected.extend(color for color, score in accents if score >= accent_cutoff and color not in selected)
+    return selected
 
 
 def balance_mostly_white_palette(colors: list[RGBColor], white_fraction: float, light_count: int) -> list[RGBColor]:
-    """Give a mostly white image white lights while retaining a small color accent."""
+    """Represent high white coverage while assigning the best accents sparingly."""
     if white_fraction < 0.7 or light_count < 1:
         return colors
     accents = [color for color in colors if not _is_bright_neutral(color)]
-    if len(accents) > 1:
-        return colors
     if not accents or light_count == 1:
         return [(255, 255, 255)] * light_count
-    accent_count = min(2, max(1, light_count - 1))
-    return [(255, 255, 255)] * (light_count - accent_count) + [accents[0]] * accent_count
+    accent_count = min(2, light_count - 1, max(1, round((1 - white_fraction) * light_count)))
+    return [(255, 255, 255)] * (light_count - accent_count) + [accents[index % len(accents)] for index in range(accent_count)]
 
 
 def _is_bright_neutral(color: RGBColor) -> bool:
@@ -89,6 +125,38 @@ async def extract_white_fraction(hass: HomeAssistant, image_source: bytes | Path
     except Exception as err:
         _LOGGER.warning("Unable to measure image white coverage: %s", type(err).__name__)
         return 0.0
+
+
+
+def _sync_palette_coverage(image_source: bytes | Path, colors: list[RGBColor]) -> list[float]:
+    """Estimate swatch coverage by assigning sampled pixels to their nearest RGB."""
+    from PIL import Image
+
+    if not colors:
+        return []
+    colors = [clamp_rgb_color(color) for color in colors]
+    counts = [0] * len(colors)
+    with ExitStack() as resources:
+        source = resources.enter_context(BytesIO(image_source)) if isinstance(image_source, bytes) else image_source
+        image = resources.enter_context(Image.open(source))
+        image.thumbnail((128, 128))
+        rgb = resources.enter_context(image.convert("RGB"))
+        pixels = list(rgb.getdata())
+    for r, g, b in pixels:
+        nearest = min(range(len(colors)), key=lambda index: (
+            (r - colors[index][0]) ** 2 + (g - colors[index][1]) ** 2 + (b - colors[index][2]) ** 2
+        ))
+        counts[nearest] += 1
+    return [count / len(pixels) for count in counts] if pixels else [0.0] * len(colors)
+
+
+async def extract_palette_coverage(hass: HomeAssistant, image_source: bytes | Path, colors: list[RGBColor]) -> list[float]:
+    """Measure swatch coverage in an executor; keep source order if unavailable."""
+    try:
+        return await hass.async_add_executor_job(_sync_palette_coverage, image_source, colors)
+    except Exception as err:
+        _LOGGER.warning("Unable to measure palette coverage: %s", type(err).__name__)
+        return [0.0] * len(colors)
 
 
 def normalize_palette_brightness(colors: list[RGBColor]) -> list[RGBColor]:

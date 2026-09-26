@@ -43,7 +43,7 @@ Add scenes by placing `.jpg`, `.jpeg`, or `.png` files in `/config/www/chameleon
 
 The **Animation** switch controls continuous palette cycling independently of transition time. With Animation off, scene and album-art changes fade to their new palette over the configured transition and then stay static. A transition of `0` applies immediately and disables continuous cycling until raised again. The Chameleon light supports native Home Assistant brightness and effect controls; `number.chameleon_*_transition` sets fade duration and `select.chameleon_*_transition_style` sets the cycling style.
 
-The Album Art effect reads the selected media player's `entity_picture`. It supports HTTP(S) artwork URLs and Home Assistant relative URLs. It applies colors in the configured light order and updates when `entity_picture` changes. The effect does not react to audio beats or waveform data.
+The Album Art effect reads the selected media player's `entity_picture`. It supports HTTP(S) artwork URLs and Home Assistant relative URLs. It applies colors in the configured light order and updates when `entity_picture` or track metadata changes. The effect does not react to audio beats or waveform data.
 
 ## Development
 

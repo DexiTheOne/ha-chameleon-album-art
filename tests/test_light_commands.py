@@ -15,6 +15,7 @@ async def group():
     hass = MagicMock()
     hass.data = {DOMAIN: {"entry": {"transition": 0}}}
     hass.services.async_call = AsyncMock()
+    hass.states.get.return_value = None
     hass.async_create_background_task = lambda coroutine, name: asyncio.create_task(coroutine, name=name)
     entry = SimpleNamespace(entry_id="entry", options={"light_entity_controls": {
         "light.disabled": {"enabled": False}, "light.enabled": {"brightness": 50},
@@ -265,7 +266,7 @@ async def test_discarded_artwork_is_never_downloaded_or_extracted(group):
         await group._transition_worker
     group._async_download_artwork.assert_awaited_once_with("/cover-9.jpg")
     extract.assert_awaited_once()
-    assert group._last_artwork_key == "/cover-9.jpg"
+    assert group._last_artwork_key[0] == "/cover-9.jpg"
 
 
 async def test_artwork_bytes_released_before_light_updates_palette_retained(group):
@@ -456,3 +457,89 @@ def test_large_artwork_is_resized_and_decoded_across_formats(format):
     with Image.open(BytesIO(result)) as image:
         assert image.size == (1024, 768)
         assert image.mode == "RGB"
+
+
+@pytest.mark.parametrize("field", ["entity_picture", "media_title", "media_artist", "media_album_name", "media_content_id"])
+async def test_artwork_listener_updates_on_track_or_picture_change(group, field):
+    group._is_on = True
+    group._effect = "Album Art"
+    before = {"entity_picture": "/same-cover.png", "media_title": "Old track"}
+    after = {**before, field: "/new-cover.png" if field == "entity_picture" else "New value"}
+    tasks = []
+    group.hass.async_create_task = lambda coro: tasks.append(asyncio.create_task(coro))
+    group.async_apply_album_art_update = AsyncMock()
+    new_state = SimpleNamespace(state="playing", attributes=after)
+    group._handle_media_player_change(SimpleNamespace(data={
+        "old_state": SimpleNamespace(state="playing", attributes=before), "new_state": new_state,
+    }))
+    await asyncio.gather(*tasks)
+    group.async_apply_album_art_update.assert_awaited_once_with(new_state)
+
+
+async def test_artwork_listener_ignores_position_refresh_and_inactive_group(group):
+    attrs = {"entity_picture": "/same-cover.png", "media_title": "Same track"}
+    group._is_on = True
+    group._effect = "Album Art"
+    group._handle_media_player_change(SimpleNamespace(data={
+        "old_state": SimpleNamespace(state="playing", attributes={**attrs, "media_position": 1}),
+        "new_state": SimpleNamespace(state="playing", attributes={**attrs, "media_position": 3}),
+    }))
+    group.hass.async_create_task.assert_not_called()
+    group._is_on = False
+    group._handle_media_player_change(SimpleNamespace(data={
+        "old_state": SimpleNamespace(state="playing", attributes=attrs),
+        "new_state": SimpleNamespace(state="playing", attributes={**attrs, "media_title": "New track"}),
+    }))
+    group.hass.async_create_task.assert_not_called()
+
+
+async def test_track_change_with_reused_url_bypasses_last_artwork_deduplication(group):
+    from custom_components.chameleon.light import _artwork_identity
+
+    group._media_player_entity = "media_player.test"
+    group._last_artwork_key = _artwork_identity(SimpleNamespace(attributes={
+        "entity_picture": "/same-cover.png", "media_title": "Old track",
+    }))
+    group._async_download_artwork = AsyncMock(return_value=b"art")
+    state = SimpleNamespace(state="playing", attributes={
+        "entity_picture": "/same-cover.png", "media_title": "New track",
+    })
+    with patch("custom_components.chameleon.light.extract_color_palette_bytes", AsyncMock(return_value=[(255, 0, 0)])), patch(
+        "custom_components.chameleon.light.extract_white_fraction", AsyncMock(return_value=0)
+    ):
+        await group._apply_album_art(media_state=state)
+        await group._apply_album_art(media_state=state)
+    group._async_download_artwork.assert_awaited_once_with("/same-cover.png")
+    assert group._last_artwork_key == _artwork_identity(state)
+
+
+async def test_artwork_refresh_resolves_latest_state_when_queued(group):
+    group._is_on = True
+    group._effect = "Album Art"
+    group._media_player_entity = "media_player.test"
+    old = SimpleNamespace(state="playing", attributes={"entity_picture": "/old.png"})
+    latest = SimpleNamespace(state="playing", attributes={"entity_picture": "/latest.png"})
+    group.hass.states.get.return_value = latest
+    group._apply_album_art = AsyncMock()
+    await group.async_apply_album_art_update(old)
+    group._apply_album_art.assert_awaited_once_with(media_state=latest)
+
+
+async def test_artwork_changed_during_download_is_not_applied(group):
+    group._media_player_entity = "media_player.test"
+    old = SimpleNamespace(state="playing", attributes={"entity_picture": "/old.png", "media_title": "Old"})
+    latest = SimpleNamespace(state="playing", attributes={"entity_picture": "/latest.png", "media_title": "Latest"})
+
+    async def download(url):
+        group.hass.states.get.return_value = latest
+        return b"old art"
+
+    group._async_download_artwork = download
+    group._apply_palette_static = AsyncMock()
+    with patch("custom_components.chameleon.light.extract_color_palette_bytes", AsyncMock(return_value=[(255, 0, 0)])), patch(
+        "custom_components.chameleon.light.extract_white_fraction", AsyncMock(return_value=0)
+    ):
+        await group._apply_album_art(media_state=old)
+    group._apply_palette_static.assert_not_awaited()
+    assert group._last_artwork_key is None
+    assert group._album_art_media_title is None

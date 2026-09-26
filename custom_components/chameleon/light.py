@@ -108,6 +108,14 @@ def _is_placeholder_art(entity_picture: str) -> bool:
     return path.startswith("/static/icons/") or path.rsplit("/", 1)[-1] in _PLACEHOLDER_ART_NAMES
 
 
+def _artwork_identity(media_state) -> tuple:
+    """Track changes must invalidate artwork even when its URL is reused."""
+    attrs = media_state.attributes
+    return tuple(attrs.get(key) for key in (
+        "entity_picture", "media_content_id", "media_title", "media_artist", "media_album_name",
+    ))
+
+
 class ArtworkDownloadError(ValueError):
     """An artwork validation failure with a safe, URL-free reason."""
 
@@ -215,8 +223,9 @@ class ChameleonLight(LightEntity):
         self._randomize_color_assignment = randomize_color_assignment
         self._random_assignment_order: list[str] | None = None
         self._remove_media_listener: Callable[[], None] | None = None
-        self._last_artwork_key: str | None = None
+        self._last_artwork_key: tuple | None = None
         self._album_art_updated_at: datetime | None = None
+        self._album_art_media_title: str | None = None
 
         # Visible state
         self._is_on = False
@@ -399,6 +408,8 @@ class ChameleonLight(LightEntity):
             attrs["album_art_media_player"] = self._media_player_entity
         if self._album_art_updated_at:
             attrs["album_art_updated_at"] = self._album_art_updated_at.isoformat()
+        if self._album_art_media_title:
+            attrs["album_art_media_title"] = self._album_art_media_title
 
         if self._extracted_palette:
             attrs["extracted_palette"] = [list(c) for c in self._extracted_palette]
@@ -725,9 +736,10 @@ class ChameleonLight(LightEntity):
         if new_state is None:
             return
 
-        old_picture = old_state.attributes.get("entity_picture") if old_state else None
         new_picture = new_state.attributes.get("entity_picture")
-        if not new_picture or new_picture == old_picture:
+        if not new_picture:
+            return
+        if old_state is not None and _artwork_identity(new_state) == _artwork_identity(old_state):
             return
 
         self.hass.async_create_task(self.async_apply_album_art_update(new_state))
@@ -740,7 +752,9 @@ class ChameleonLight(LightEntity):
             media_state = self.hass.states.get(self._media_player_entity)
         async def update_artwork():
             if self._is_on and self._effect == SCENE_ALBUM_ART:
-                await self._apply_album_art(media_state=media_state)
+                # A queued event is a signal to refresh, not a frozen cover.
+                current = self.hass.states.get(self._media_player_entity) if self._media_player_entity else None
+                await self._apply_album_art(media_state=current or media_state)
                 self.async_write_ha_state()
         await self._queue_transition(update_artwork, latest_artwork=True)
 
@@ -763,7 +777,7 @@ class ChameleonLight(LightEntity):
         if media_state.state in ("off", "idle", "unavailable", "unknown") or _is_placeholder_art(entity_picture):
             self._last_error = "Configured media player has no current album artwork"
             return
-        artwork_key = entity_picture
+        artwork_key = _artwork_identity(media_state)
         if not force and artwork_key == self._last_artwork_key:
             return
 
@@ -795,6 +809,15 @@ class ChameleonLight(LightEntity):
             self._last_error = "No non-black colors found in album artwork"
             return
 
+        # A slow download/extraction must not apply colors for a cover that
+        # changed while it ran. The listener has queued the newer identity.
+        current = self.hass.states.get(self._media_player_entity)
+        if current is not None and (
+            current.state in ("off", "idle", "unavailable", "unknown")
+            or _artwork_identity(current) != artwork_key
+        ):
+            return
+
         previous_order = self._random_assignment_order
         if self._randomize_color_assignment and not reuse_random_assignment:
             self._random_assignment_order = randomized_light_order(self._light_entities, previous_order)
@@ -820,6 +843,7 @@ class ChameleonLight(LightEntity):
         self._last_artwork_key = artwork_key
         self._last_scene_change = datetime.now()
         self._album_art_updated_at = self._last_scene_change
+        self._album_art_media_title = media_state.attributes.get("media_title")
         self._last_error = None if result.all_succeeded or not result.results else f"Partial failure: {result.failed_count}/{len(result.results)} lights failed"
 
     async def _async_download_artwork(self, entity_picture: str) -> bytes:

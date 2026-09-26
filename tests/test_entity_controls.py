@@ -102,3 +102,21 @@ async def test_wled_segment_zero_is_controlled_and_all_managed_segments_power_of
         assert await send_wled_power_off(hass, "light.zero", 1, 4, list(entities))
         assert session.posts[1]["on"] is False
         assert session.posts[1]["seg"] == [{"id": 0, "on": False}, {"id": 1, "on": False}]
+
+
+def test_control_names_use_registry_when_target_state_not_loaded():
+    hass = MagicMock()
+    hass.states.get.return_value = None
+    entry = SimpleNamespace(entry_id="entry", options={})
+    with patch("custom_components.chameleon.entity_controls.er.async_get") as registry, patch(
+        "custom_components.chameleon.entity_controls.dr.async_get"
+    ) as devices:
+        registry.return_value.async_get.return_value = SimpleNamespace(
+            device_id="device", name=None, original_name="Segment 1"
+        )
+        devices.return_value.async_get.return_value = SimpleNamespace(name_by_user=None, name="Media Console LED Strip")
+        control = LightEntitySwitch(hass, entry, "light.one", "enabled")
+        assert control._attr_name == "Media Console LED Strip Segment 1 Enabled"
+        registry.return_value.async_get.return_value.original_name = None
+        control = LightEntityBrightness(hass, entry, "light.zero", "brightness")
+        assert control._attr_name == "Media Console LED Strip Brightness"

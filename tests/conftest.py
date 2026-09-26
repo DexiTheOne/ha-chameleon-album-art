@@ -141,6 +141,9 @@ def _setup_homeassistant_mocks():
             pass
 
     mock_ha_components_select.SelectEntity = SelectEntity
+    mock_ha_components_light.LightEntity = SelectEntity
+    mock_ha_components_light.ATTR_BRIGHTNESS = "brightness"
+    mock_ha_components_light.ATTR_EFFECT = "effect"
 
     class SwitchEntity:
         """Minimal switch base for platform tests."""
@@ -217,6 +220,8 @@ def _setup_homeassistant_mocks():
     sys.modules["homeassistant.helpers"] = mock_ha_helpers
     sys.modules["homeassistant.helpers.aiohttp_client"] = MagicMock()
     sys.modules["homeassistant.helpers.entity_registry"] = MagicMock()
+    sys.modules["homeassistant.helpers.device_registry"] = MagicMock()
+    sys.modules["homeassistant.helpers.network"] = MagicMock()
     sys.modules["homeassistant.helpers.entity_platform"] = mock_ha_helpers_entity_platform
     sys.modules["homeassistant.helpers.event"] = mock_ha_helpers_event
     sys.modules["homeassistant.helpers.selector"] = mock_ha_helpers_selector

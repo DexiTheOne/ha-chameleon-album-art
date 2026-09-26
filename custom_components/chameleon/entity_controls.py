@@ -2,6 +2,7 @@
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN
 
@@ -38,8 +39,19 @@ class LightEntityControl:
         self._entry = entry
         self._target = entity_id
         state = hass.states.get(entity_id)
-        name = state.attributes.get("friendly_name", entity_id) if state else entity_id
-        self._attr_name = f"{name} {suffix}"
+        name = state.attributes.get("friendly_name") if state else None
+        if not name:
+            target = er.async_get(hass).async_get(entity_id)
+            device = dr.async_get(hass).async_get(target.device_id) if target and target.device_id else None
+            device_name = (device.name_by_user or device.name) if device else None
+            if target and target.name:
+                name = target.name
+            elif target and target.original_name:
+                name = " ".join(part for part in (device_name, target.original_name) if part)
+            else:
+                name = device_name
+        name = name or entity_id.split(".", 1)[-1].replace("_", " ").title()
+        self._attr_name = f"{name} {suffix.title()}"
         self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_{entity_id}_{suffix}"
 
     @property

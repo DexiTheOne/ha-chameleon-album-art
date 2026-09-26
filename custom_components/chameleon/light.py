@@ -584,13 +584,15 @@ class ChameleonLight(LightEntity):
 
         result = await self._apply_colors_static(image_path, brightness)
 
-        if not result.results:
+        if not result.results and self._enabled_entities():
             return
 
-        if result.all_succeeded:
+        if result.all_succeeded or not result.results:
             self._effect = effect
             self._last_effect = effect
             self._applied_colors = result.applied_colors
+            self._failed_lights = {}
+            self._last_error = None
             self._last_scene_change = datetime.now()
             verb = "applied"
             _LOGGER.info("Scene '%s' %s successfully", effect, verb)
@@ -707,7 +709,7 @@ class ChameleonLight(LightEntity):
         self._last_artwork_key = artwork_key
         self._last_scene_change = datetime.now()
         self._album_art_updated_at = self._last_scene_change
-        self._last_error = None if result.all_succeeded else f"Partial failure: {result.failed_count}/{len(result.results)} lights failed"
+        self._last_error = None if result.all_succeeded or not result.results else f"Partial failure: {result.failed_count}/{len(result.results)} lights failed"
 
     async def _async_download_artwork(self, entity_picture: str) -> bytes:
         """Download artwork into bounded memory without persisting its token or bytes."""
@@ -737,14 +739,20 @@ class ChameleonLight(LightEntity):
                 raise ValueError("Artwork response is empty")
             return image_bytes
 
+    async def _apply_manual_color(self, rgb_color: RGBColor) -> None:
+        """Apply a manual color using the same exclusion and brightness rules."""
+        rgb_color = clamp_rgb_color(rgb_color)
+        self._random_assignment_order = None
         result = await self._apply_palette_wled(
             [rgb_color], dict.fromkeys(self._light_entities, rgb_color), self._brightness_pct,
         )
 
-        if result.all_succeeded:
+        if result.all_succeeded or not result.results:
             self._manual_color = rgb_color
             self._effect = None
             self._applied_colors = result.applied_colors
+            self._failed_lights = {}
+            self._last_error = None
             self._last_scene_change = datetime.now()
             _LOGGER.info("Manual color RGB%s applied successfully", rgb_color)
         elif result.all_failed:

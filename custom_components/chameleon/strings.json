@@ -63,7 +63,8 @@
           "push_right": "Push Right",
           "push_left": "Push Left",
           "outside_in": "Outside In",
-          "inside_out": "Inside Out"
+          "inside_out": "Inside Out",
+          "random": "Random"
         }
       },
       "scene": {

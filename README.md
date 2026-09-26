@@ -79,3 +79,19 @@ restores participation in the active group scene. These settings survive restart
 Brightness is a 0–100% multiplier of group brightness: a group at 80% and a light
 at 50% produce 40% brightness. Defaults are on and 100%. A 0% multiplier
 keeps the light dark while leaving it enabled for palette updates.
+
+### Transition queue and Random WLED style
+
+Lighting moves share a queue of up to ten requests, including the active
+transition. Random-scene button presses and manual scene selections run in
+arrival order after the previous transition duration finishes. Further explicit
+requests are discarded while the queue is full. Album-art changes retain only
+the newest waiting cover, leaving the current transition uninterrupted.
+Unused covers are not downloaded. Downloaded artwork is released after palette
+and optional white-coverage extraction; palette data remains available.
+
+The WLED Transition Style select also offers **Random**, which samples one of
+the seven non-fade styles for each palette update. Shutdown reuses that choice.
+The existing device-wide Fade guard remains for WLED devices containing a
+single-LED segment. Other lights and WLED fallback commands use the configured
+transition duration where supported. Queues are cleared on integration unload.

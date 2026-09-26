@@ -5,7 +5,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from custom_components.chameleon.wled_palette import send_wled_palette, send_wled_power_off, send_wled_transition, three_palette_colors, wled_main_lights
+from custom_components.chameleon.wled_palette import (
+    send_wled_palette,
+    send_wled_power_off,
+    send_wled_transition,
+    three_palette_colors,
+    wled_main_lights,
+)
 
 
 def test_wled_main_lights_resolves_renamed_parent_once():
@@ -207,7 +213,9 @@ async def test_native_transition_keeps_each_configured_segment_color():
 
 
 @pytest.mark.asyncio
-async def test_native_power_off_uses_selected_style_and_duration_for_all_segments():
+@pytest.mark.parametrize("style", [0, 1, 2, 3, 4, 5, 16, 17])
+@pytest.mark.parametrize("duration", [0, 2.5])
+async def test_native_power_off_uses_selected_style_and_duration_for_all_segments(style, duration):
     hass = MagicMock()
     hass.config_entries.async_get_entry.return_value = SimpleNamespace(
         entry_id="wled-1", domain="wled", data={"host": "10.0.0.5"}
@@ -217,15 +225,15 @@ async def test_native_power_off_uses_selected_style_and_duration_for_all_segment
         "custom_components.chameleon.wled_palette.async_get_clientsession", return_value=session
     ):
         registry.return_value.async_get.return_value = SimpleNamespace(config_entry_id="wled-1")
-        assert await send_wled_power_off(hass, "light.one", 1.5, 4)
+        assert await send_wled_power_off(hass, "light.one", duration, style)
     assert session.posts == [{
-        "on": False, "tt": 15, "bs": 4,
-        "seg": [{"id": 0, "on": False}, {"id": 1, "on": False}],
+        "on": False, "tt": round(duration * 10), "bs": style,
     }]
 
 
 @pytest.mark.asyncio
-async def test_single_led_segment_fades_on_and_off_with_selected_duration():
+@pytest.mark.parametrize("style", [1, 2, 3, 4, 5, 16, 17])
+async def test_single_led_segment_fades_on_and_off_with_selected_duration(style):
     hass = MagicMock()
     hass.config_entries.async_get_entry.return_value = SimpleNamespace(
         entry_id="wled-1", domain="wled", data={"host": "10.0.0.5"}
@@ -235,6 +243,6 @@ async def test_single_led_segment_fades_on_and_off_with_selected_duration():
         "custom_components.chameleon.wled_palette.async_get_clientsession", return_value=session
     ):
         registry.return_value.async_get.return_value = SimpleNamespace(config_entry_id="wled-1")
-        assert await send_wled_transition(hass, "light.one", [(255, 120, 30)], 0, 80, 1.5, 4)
-        assert await send_wled_power_off(hass, "light.one", 1.5, 4)
+        assert await send_wled_transition(hass, "light.one", [(255, 120, 30)], 0, 80, 1.5, style)
+        assert await send_wled_power_off(hass, "light.one", 1.5, style)
     assert [(payload["bs"], payload["tt"]) for payload in session.posts] == [(0, 15), (0, 15)]

@@ -6,8 +6,8 @@ import asyncio
 import logging
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .color_extractor import RGBColor, clamp_rgb_color
 from .entity_controls import wled_segment_id
@@ -262,11 +262,17 @@ async def send_wled_power_off(
             ids = [segment_id for segment_id in ids if segment_id in selected]
             if not ids:
                 return False
+        whole_device = members is None or set(ids) == {segment["id"] for segment in segments}
+        # Global power and segment power must not change together: the segment
+        # transition would snapshot an already-off device for spatial blends.
+        # Keep segment flags intact for a global off; partial control uses only
+        # segment flags and leaves the master's power untouched.
         payload = {
-            **({"on": False} if members is None or set(ids) == {segment["id"] for segment in segments} else {}),
+            **({"on": False} if whole_device else {
+                "seg": [{"id": segment_id, "on": False} for segment_id in ids],
+            }),
             "tt": round(max(0, min(65, transition)) * 10),
             "bs": _transition_style(segments, blend_mode),
-            "seg": [{"id": segment_id, "on": False} for segment_id in ids],
         }
         async with session.post(f"http://{host}/json/state", json=payload, timeout=5) as response:
             response.raise_for_status()

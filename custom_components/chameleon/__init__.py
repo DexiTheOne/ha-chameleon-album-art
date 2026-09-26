@@ -9,8 +9,8 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
     ATTR_SCENE_NAME,
@@ -267,7 +267,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         """
         domain_data = hass.data.get(DOMAIN, {})
         refreshed = 0
-        for key, entry_data in domain_data.items():
+        for entry_data in domain_data.values():
             if not isinstance(entry_data, dict):
                 continue
             chameleon_light = entry_data.get("chameleon_light")

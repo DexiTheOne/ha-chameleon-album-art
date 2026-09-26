@@ -13,11 +13,11 @@ from custom_components.chameleon.color_extractor import (
     _sync_white_fraction,
     balance_mostly_white_palette,
     clamp_rgb_color,
-    normalize_palette_brightness,
-    select_interesting_colors,
     extract_color_palette_bytes,
     generate_gradient_path,
+    normalize_palette_brightness,
     rgb_to_hs,
+    select_interesting_colors,
 )
 
 
@@ -241,3 +241,22 @@ def test_interesting_colors_suppresses_skin_tones_but_keeps_bright_orange():
     colors = [(220, 180, 150), (190, 135, 100), (160, 110, 85),
               (40, 110, 180), (255, 150, 20)]
     assert select_interesting_colors(colors) == [(40, 110, 180), (255, 150, 20)]
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_artwork_extractor_closes_image_and_stream_even_on_failure(fails):
+    from unittest.mock import patch
+
+    from custom_components.chameleon.color_extractor import _sync_extract_palette_bytes
+    thief = MagicMock()
+    thief.get_palette.return_value = [(255, 0, 0)]
+    if fails:
+        thief.get_palette.side_effect = ValueError("invalid image")
+    with patch("colorthief.ColorThief", return_value=thief) as factory:
+        if fails:
+            with pytest.raises(ValueError):
+                _sync_extract_palette_bytes(b"image", 3, 1)
+        else:
+            assert _sync_extract_palette_bytes(b"image", 3, 1) == [(255, 0, 0)]
+    thief.image.close.assert_called_once()
+    assert factory.call_args.args[0].closed

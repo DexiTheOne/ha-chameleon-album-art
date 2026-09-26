@@ -74,6 +74,7 @@ WLED_BLEND_STYLES: Final = {
     "inside_out": 5,
 }
 DEFAULT_WLED_BLEND_STYLE: Final = "outside_in"
+WLED_BLEND_STYLE_OPTIONS: Final = [*WLED_BLEND_STYLES, "random"]
 
 # Brightness
 # Brightness of 0 means "off" — equivalent to selecting the Off scene.

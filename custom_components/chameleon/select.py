@@ -15,7 +15,7 @@ from .const import (
     CONF_WLED_BLEND_STYLE,
     DEFAULT_WLED_BLEND_STYLE,
     DOMAIN,
-    WLED_BLEND_STYLES,
+    WLED_BLEND_STYLE_OPTIONS,
 )
 from .helpers import get_chameleon_device_name, get_entity_base_name
 from .scene_control import ChameleonSceneControl
@@ -57,9 +57,9 @@ class ChameleonWledBlendSelect(SelectEntity):
         self.hass = hass
         self._entry = entry
         self._light_entities = light_entities
-        self._attr_options = list(WLED_BLEND_STYLES)
+        self._attr_options = list(WLED_BLEND_STYLE_OPTIONS)
         saved = entry.options.get(CONF_WLED_BLEND_STYLE, DEFAULT_WLED_BLEND_STYLE)
-        self._current_option = saved if saved in WLED_BLEND_STYLES else DEFAULT_WLED_BLEND_STYLE
+        self._current_option = saved if saved in WLED_BLEND_STYLE_OPTIONS else DEFAULT_WLED_BLEND_STYLE
         _entry_data(hass, entry.entry_id)["wled_blend_style"] = self._current_option
         base_name = get_entity_base_name(hass, light_entities)
         self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_wled_blend_style"
@@ -79,7 +79,7 @@ class ChameleonWledBlendSelect(SelectEntity):
         return self._current_option
 
     async def async_select_option(self, option: str) -> None:
-        if option not in WLED_BLEND_STYLES:
+        if option not in WLED_BLEND_STYLE_OPTIONS:
             return
         self._current_option = option
         _entry_data(self.hass, self._entry.entry_id)["wled_blend_style"] = option

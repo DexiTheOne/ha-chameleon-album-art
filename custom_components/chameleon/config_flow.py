@@ -17,16 +17,16 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
-    CONF_LIGHT_ENTITIES,
     CONF_INTERESTING_COLORS,
+    CONF_LIGHT_ENTITIES,
     CONF_MEDIA_PLAYER_ENTITY,
     CONF_NORMALIZE_BRIGHTNESS,
     CONF_RANDOMIZE_COLOR_ASSIGNMENT,
     CONF_SEND_PALETTE_TO_WLED,
     CONF_TRANSITION,
     CONF_WLED_BLEND_STYLE,
-    DEFAULT_NORMALIZE_BRIGHTNESS,
     DEFAULT_INTERESTING_COLORS,
+    DEFAULT_NORMALIZE_BRIGHTNESS,
     DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT,
     DEFAULT_SEND_PALETTE_TO_WLED,
     DEFAULT_TRANSITION,
@@ -34,8 +34,8 @@ from .const import (
     MAX_TRANSITION,
     MIN_TRANSITION,
 )
-from .helpers import get_entry_title
 from .entity_controls import OPTIONS_KEY
+from .helpers import get_entry_title
 
 
 class ChameleonConfigFlow(ConfigFlow, domain=DOMAIN):

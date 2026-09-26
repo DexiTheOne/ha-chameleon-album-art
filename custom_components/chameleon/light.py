@@ -26,6 +26,7 @@ import asyncio
 import colorsys
 import logging
 import random
+from collections import deque
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -59,18 +60,18 @@ from .color_extractor import (
     select_interesting_colors,
 )
 from .const import (
+    CONF_INTERESTING_COLORS,
     CONF_LIGHT_ENTITIES,
     CONF_LIGHT_ENTITY,
     CONF_MEDIA_PLAYER_ENTITY,
     CONF_NORMALIZE_BRIGHTNESS,
-    CONF_INTERESTING_COLORS,
     CONF_RANDOMIZE_COLOR_ASSIGNMENT,
     CONF_SEND_PALETTE_TO_WLED,
     CONF_TRANSITION,
     DEFAULT_BRIGHTNESS,
     DEFAULT_COLOR_COUNT,
-    DEFAULT_NORMALIZE_BRIGHTNESS,
     DEFAULT_INTERESTING_COLORS,
+    DEFAULT_NORMALIZE_BRIGHTNESS,
     DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT,
     DEFAULT_SEND_PALETTE_TO_WLED,
     DEFAULT_TRANSITION,
@@ -84,8 +85,8 @@ from .const import (
     SUPPORTED_EXTENSIONS,
     WLED_BLEND_STYLES,
 )
-from .helpers import get_chameleon_device_name, get_entity_base_name
 from .entity_controls import controlled_entities, settings
+from .helpers import get_chameleon_device_name, get_entity_base_name
 from .light_controller import ApplyColorsResult, LightController, LightResult
 from .wled_palette import send_wled_power_off, send_wled_transition, wled_entry_id
 
@@ -221,6 +222,12 @@ class ChameleonLight(LightEntity):
         # simultaneously; without the lock those interleave and race each other
         # over the current scene state.
         self._lock = asyncio.Lock()
+        # Includes the move currently running or waiting for WLED to finish.
+        self._transition_queue = deque()
+        self._active_transition = None
+        self._transition_worker: asyncio.Task | None = None
+        self._queue_closed = False
+        self._last_wled_blend_mode = WLED_BLEND_STYLES[DEFAULT_WLED_BLEND_STYLE]
 
         self._light_controller = LightController(hass)
 
@@ -232,6 +239,18 @@ class ChameleonLight(LightEntity):
 
     def _get_runtime_transition(self) -> float:
         return _entry_data(self.hass, self._entry.entry_id).get("transition", self._initial_transition)
+
+    def _resolve_wled_blend_mode(self, *, palette_update: bool) -> int:
+        """Choose once per palette; reuse that choice for subsequent power-off."""
+        style = _entry_data(self.hass, self._entry.entry_id).get("wled_blend_style", DEFAULT_WLED_BLEND_STYLE)
+        if style == "random":
+            if palette_update:
+                self._last_wled_blend_mode = random.choice([
+                    mode for mode in WLED_BLEND_STYLES.values() if mode != 0
+                ])
+            return self._last_wled_blend_mode
+        self._last_wled_blend_mode = WLED_BLEND_STYLES.get(style, WLED_BLEND_STYLES[DEFAULT_WLED_BLEND_STYLE])
+        return self._last_wled_blend_mode
 
     def _prepare_palette(self, colors: list[RGBColor], white_fraction: float = 0.0) -> list[RGBColor]:
         """Adjust source-image RGB values before static or animated output."""
@@ -276,6 +295,13 @@ class ChameleonLight(LightEntity):
     async def async_will_remove_from_hass(self) -> None:
         """Clear our registration."""
         await super().async_will_remove_from_hass()
+        self._queue_closed = True
+        if self._transition_worker is not None:
+            self._transition_worker.cancel()
+            await asyncio.gather(self._transition_worker, return_exceptions=True)
+        for _, completion, _ in self._transition_queue:
+            completion.cancel()
+        self._transition_queue.clear()
 
         entry_data = _entry_data(self.hass, self._entry.entry_id)
         if entry_data.get("chameleon_light") is self:
@@ -375,13 +401,59 @@ class ChameleonLight(LightEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on with optional effect, rgb_color, and/or brightness."""
-        async with self._lock:
-            await self._do_turn_on(**kwargs)
+        await self._queue_transition(lambda: self._do_turn_on(**kwargs))
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off all underlying lights."""
-        async with self._lock:
-            await self._do_turn_off()
+        await self._queue_transition(self._do_turn_off)
+
+    async def _queue_transition(self, action, *, latest_artwork: bool = False) -> None:
+        """Admit up to ten moves, keeping random selection deferred until execution."""
+        if self._queue_closed:
+            return
+        if latest_artwork:
+            # Remove only waiting covers. The running move (including its
+            # cooldown) must finish, and explicit scene requests keep order.
+            for move in list(self._transition_queue):
+                _, completion, is_artwork = move
+                if is_artwork and completion is not self._active_transition:
+                    self._transition_queue.remove(move)
+                    if not completion.done():
+                        completion.set_result(None)
+        if len(self._transition_queue) >= 10:
+            return
+        completion = asyncio.get_running_loop().create_future()
+        self._transition_queue.append((action, completion, latest_artwork))
+        if self._transition_worker is None or self._transition_worker.done():
+            # Background task: HA must not wait for the whole queue on shutdown.
+            self._transition_worker = self.hass.async_create_background_task(
+                self._run_transition_queue(), "Chameleon transition queue"
+            )
+        await asyncio.shield(completion)
+
+    async def _run_transition_queue(self) -> None:
+        """Apply in arrival order and reserve the active slot through its duration."""
+        while self._transition_queue:
+            action, completion, _ = self._transition_queue[0]
+            self._active_transition = completion
+            try:
+                async with self._lock:
+                    duration = max(0, self._get_runtime_transition())
+                    await action()
+                if not completion.done():
+                    completion.set_result(None)
+                # Start the clock after all device requests have completed.
+                await asyncio.sleep(duration)
+            except asyncio.CancelledError:
+                if not completion.done():
+                    completion.cancel()
+                raise
+            except Exception as err:
+                if not completion.done():
+                    completion.set_exception(err)
+                _LOGGER.error("Queued Chameleon action failed: %s", type(err).__name__)
+            self._transition_queue.popleft()
+            self._active_transition = None
 
     async def _do_turn_on(self, **kwargs: Any) -> None:
         """Inner turn-on, runs under ``self._lock``."""
@@ -445,13 +517,12 @@ class ChameleonLight(LightEntity):
         async def turn_off_entity(entity_id: str) -> None:
             try:
                 await self.hass.services.async_call(
-                    "light", "turn_off", {"entity_id": entity_id}, blocking=True,
+                    "light", "turn_off", {"entity_id": entity_id, "transition": transition}, blocking=True,
                 )
             except Exception as err:
                 _LOGGER.error("Failed to turn off %s: %s", entity_id, err)
 
-        blend_style = _entry_data(self.hass, self._entry.entry_id).get("wled_blend_style", DEFAULT_WLED_BLEND_STYLE)
-        blend_mode = WLED_BLEND_STYLES.get(blend_style, WLED_BLEND_STYLES[DEFAULT_WLED_BLEND_STYLE])
+        blend_mode = self._resolve_wled_blend_mode(palette_update=False)
         enabled = self._enabled_entities()
         devices: dict[str, str] = {}
         for entity_id in enabled:
@@ -465,7 +536,7 @@ class ChameleonLight(LightEntity):
             ) for entry_id, entity_id in devices.items()
         ))
         ordinary = [entity_id for entity_id in enabled if not wled_entry_id(self.hass, entity_id)]
-        failed = {entry_id for entry_id, succeeded in zip(devices, outcomes) if not succeeded}
+        failed = {entry_id for entry_id, succeeded in zip(devices, outcomes, strict=True) if not succeeded}
         fallback = [entity_id for entity_id in enabled if wled_entry_id(self.hass, entity_id) in failed]
         await asyncio.gather(*(turn_off_entity(entity_id) for entity_id in [*ordinary, *fallback]))
         self._is_on = False
@@ -515,7 +586,7 @@ class ChameleonLight(LightEntity):
         same lock as turn_on/turn_off so re-applies serialize with user
         actions.
         """
-        async with self._lock:
+        async def reapply():
             if not self._is_on:
                 return
             if self._manual_color is not None:
@@ -523,6 +594,7 @@ class ChameleonLight(LightEntity):
             elif self._effect is not None:
                 await self._apply_effect(self._effect, reuse_random_assignment=True)
             self.async_write_ha_state()
+        await self._queue_transition(reapply)
 
     async def async_refresh_options(self) -> None:
         """Refresh the scene cache (effect_list source).
@@ -632,22 +704,28 @@ class ChameleonLight(LightEntity):
         if not new_picture or new_picture == old_picture:
             return
 
-        self.hass.async_create_task(self.async_apply_album_art_update())
+        self.hass.async_create_task(self.async_apply_album_art_update(new_state))
 
-    async def async_apply_album_art_update(self) -> None:
+    async def async_apply_album_art_update(self, media_state=None) -> None:
         """Serialize a track-driven artwork refresh with user light actions."""
-        async with self._lock:
+        # Preserve the latest waiting cover; intermediate covers are replaced
+        # without interrupting the currently running transition.
+        if media_state is None and self._media_player_entity:
+            media_state = self.hass.states.get(self._media_player_entity)
+        async def update_artwork():
             if self._is_on and self._effect == SCENE_ALBUM_ART:
-                await self._apply_album_art()
+                await self._apply_album_art(media_state=media_state)
                 self.async_write_ha_state()
+        await self._queue_transition(update_artwork, latest_artwork=True)
 
-    async def _apply_album_art(self, *, force: bool = False, reuse_random_assignment: bool = False) -> None:
+    async def _apply_album_art(self, *, force: bool = False, reuse_random_assignment: bool = False, media_state=None) -> None:
         """Download, extract, and apply the configured media player's artwork."""
         if not self._media_player_entity:
             self._last_error = "No album-art media player configured"
             return
 
-        media_state = self.hass.states.get(self._media_player_entity)
+        if media_state is None:
+            media_state = self.hass.states.get(self._media_player_entity)
         if media_state is None:
             self._last_error = "Configured album-art media player was not found"
             return
@@ -672,12 +750,16 @@ class ChameleonLight(LightEntity):
             _LOGGER.warning("Unable to download album artwork for %s: %s", self._media_player_entity, type(err).__name__)
             return
 
-        colors = await extract_color_palette_bytes(
-            self.hass,
-            image_bytes,
-            color_count=max(len(self._light_entities), DEFAULT_COLOR_COUNT),
-        )
-        white_fraction = await extract_white_fraction(self.hass, image_bytes) if self._interesting_colors else 0.0
+        try:
+            colors = await extract_color_palette_bytes(
+                self.hass,
+                image_bytes,
+                color_count=max(len(self._light_entities), DEFAULT_COLOR_COUNT),
+            )
+            white_fraction = await extract_white_fraction(self.hass, image_bytes) if self._interesting_colors else 0.0
+        finally:
+            # Only palette/white-coverage data is needed for device updates.
+            del image_bytes
         if not colors and white_fraction < 0.7:
             self._last_error = "Unable to extract colors from album artwork"
             return
@@ -808,8 +890,7 @@ class ChameleonLight(LightEntity):
             if entry_id and entry_id not in devices:
                 devices[entry_id] = (entity, index)
         ordinary = {entity: color for entity, color in light_colors.items() if not wled_entry_id(self.hass, entity)}
-        blend_style = _entry_data(self.hass, self._entry.entry_id).get("wled_blend_style", DEFAULT_WLED_BLEND_STYLE)
-        blend_mode = WLED_BLEND_STYLES.get(blend_style, WLED_BLEND_STYLES[DEFAULT_WLED_BLEND_STYLE])
+        blend_mode = self._resolve_wled_blend_mode(palette_update=True)
         tasks = [
             asyncio.create_task(send_wled_transition(
                 self.hass, entity, colors, index, brightness,
@@ -823,7 +904,7 @@ class ChameleonLight(LightEntity):
         async def apply_members(members):
             results = await asyncio.gather(*(
                 self._light_controller.apply_color_to_light(
-                    entity, color, brightness=self._entity_brightness(entity, brightness), transition=0
+                    entity, color, brightness=self._entity_brightness(entity, brightness), transition=self._get_runtime_transition()
                 ) for entity, color in members.items()
             ))
             return ApplyColorsResult(results=list(results))
@@ -831,7 +912,7 @@ class ChameleonLight(LightEntity):
         ordinary_task = asyncio.create_task(apply_members(ordinary)) if ordinary else None
         outcomes = await asyncio.gather(*tasks)
         result = ApplyColorsResult()
-        for entry_id, succeeded in zip(devices, outcomes):
+        for entry_id, succeeded in zip(devices, outcomes, strict=True):
             members = {entity: color for entity, color in light_colors.items() if wled_entry_id(self.hass, entity) == entry_id}
             if succeeded:
                 result.results.extend(LightResult(entity_id=entity, success=True, color=color) for entity, color in members.items())

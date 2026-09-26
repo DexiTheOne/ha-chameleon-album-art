@@ -5,9 +5,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from custom_components.chameleon.const import DOMAIN
 from custom_components.chameleon.entity_controls import (
-    LightEntityBrightness, LightEntitySwitch, controlled_entities, settings,
+    LightEntityBrightness,
+    LightEntitySwitch,
+    controlled_entities,
+    settings,
 )
-from custom_components.chameleon.wled_palette import send_wled_transition, send_wled_power_off
+from custom_components.chameleon.wled_palette import send_wled_power_off, send_wled_transition
 from tests.test_wled_palette import _Session
 
 
@@ -101,7 +104,7 @@ async def test_wled_segment_zero_is_controlled_and_all_managed_segments_power_of
         assert session.posts[0]["seg"] == [{"id": 0, "on": False, "bri": 0, "col": [[255, 0, 0]]}]
         assert await send_wled_power_off(hass, "light.zero", 1, 4, list(entities))
         assert session.posts[1]["on"] is False
-        assert session.posts[1]["seg"] == [{"id": 0, "on": False}, {"id": 1, "on": False}]
+        assert "seg" not in session.posts[1]
 
 
 def test_control_names_use_registry_when_target_state_not_loaded():

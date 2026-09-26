@@ -1,9 +1,9 @@
 """Persistent controls for individual configured lights."""
-from homeassistant.components.switch import SwitchEntity
 from homeassistant.components.number import NumberEntity, NumberMode
+from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import EntityCategory
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from .const import CONF_LIGHT_ENTITIES, CONF_LIGHT_ENTITY, DOMAIN
 from .helpers import get_chameleon_device_name

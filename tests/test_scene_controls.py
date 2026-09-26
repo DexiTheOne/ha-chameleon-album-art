@@ -1,8 +1,8 @@
 """Verify scene controls share the light state and use its turn-on path."""
 
+import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
-import sys
 
 import pytest
 
@@ -16,9 +16,9 @@ exceptions_module = MagicMock()
 exceptions_module.HomeAssistantError = RuntimeError
 sys.modules.setdefault("homeassistant.exceptions", exceptions_module)
 
-from custom_components.chameleon.button import ChameleonRandomSceneButton
-from custom_components.chameleon.select import ChameleonSceneSelect
-from custom_components.chameleon.const import DOMAIN
+from custom_components.chameleon.button import ChameleonRandomSceneButton  # noqa: E402
+from custom_components.chameleon.const import DOMAIN  # noqa: E402
+from custom_components.chameleon.select import ChameleonSceneSelect  # noqa: E402
 
 
 @pytest.fixture
@@ -87,3 +87,19 @@ async def test_unavailable_light_and_no_random_images(controls):
     hass.data[DOMAIN]["entry-1"].pop("chameleon_light")
     assert not button.available
     assert scene.options == []
+
+
+async def test_random_wled_style_is_selectable_saved_and_restored():
+    from custom_components.chameleon.select import ChameleonWledBlendSelect
+    entry = SimpleNamespace(entry_id="entry", options={})
+    hass = MagicMock()
+    hass.data = {}
+    with patch("custom_components.chameleon.select.get_entity_base_name", return_value="common_area"):
+        control = ChameleonWledBlendSelect(hass, entry, [])
+        assert "random" in control._attr_options
+        await control.async_select_option("random")
+        assert control.current_option == "random"
+        assert hass.data[DOMAIN]["entry"]["wled_blend_style"] == "random"
+        saved = hass.config_entries.async_update_entry.call_args.kwargs["options"]
+        restored = ChameleonWledBlendSelect(hass, SimpleNamespace(entry_id="entry", options=saved), [])
+        assert restored.current_option == "random"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import colorsys
 import logging
+from contextlib import ExitStack
 from io import BytesIO
 from pathlib import Path
 
@@ -94,10 +95,11 @@ def _sync_white_fraction(image_source: bytes | Path) -> float:
     """Measure white image area independently of ColorThief's color palette."""
     from PIL import Image
 
-    source = BytesIO(image_source) if isinstance(image_source, bytes) else image_source
-    with Image.open(source) as image:
+    with ExitStack() as resources:
+        source = resources.enter_context(BytesIO(image_source)) if isinstance(image_source, bytes) else image_source
+        image = resources.enter_context(Image.open(source))
         image.thumbnail((128, 128))
-        rgb = image.convert("RGB")
+        rgb = resources.enter_context(image.convert("RGB"))
         pixels = list(rgb.getdata())
     return sum(_is_bright_neutral(pixel) for pixel in pixels) / len(pixels) if pixels else 0.0
 
@@ -150,8 +152,12 @@ def _sync_extract_palette_bytes(image_bytes: bytes, color_count: int, quality: i
     """Extract a palette from in-memory image bytes."""
     from colorthief import ColorThief
 
-    color_thief = ColorThief(BytesIO(image_bytes))
-    return color_thief.get_palette(color_count=color_count, quality=quality)
+    with BytesIO(image_bytes) as source:
+        color_thief = ColorThief(source)
+        try:
+            return color_thief.get_palette(color_count=color_count, quality=quality)
+        finally:
+            color_thief.image.close()
 
 
 async def extract_dominant_color(

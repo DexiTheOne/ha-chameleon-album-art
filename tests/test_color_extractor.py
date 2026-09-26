@@ -281,3 +281,17 @@ def test_tigallerro_dark_green_palette_is_accepted_and_brightened():
     source = [(13, 27, 20)]
     assert select_interesting_colors(source) == source
     assert normalize_palette_brightness(select_interesting_colors(source)) == [(89, 255, 172)]
+
+
+def test_normalization_does_not_invent_hues_from_neutral_quantization_noise():
+    source = [(116, 115, 116), (116, 116, 115), (115, 116, 116), (218, 218, 218)]
+    assert normalize_palette_brightness(source) == [(255, 255, 255)] * len(source)
+    assert normalize_palette_brightness([(13, 27, 20), (1, 0, 0)]) == [(89, 255, 172), (255, 0, 0)]
+
+
+def test_black_white_artwork_quantized_palette_normalizes_to_white():
+    # The observed black/white cover's real ColorThief palette includes gray
+    # (116, 115, 116); it must not become a bright magenta accent.
+    palette = [(218, 218, 218), (4, 4, 4), (87, 87, 87), (132, 132, 132),
+               (124, 124, 124), (116, 115, 116), (60, 60, 60)]
+    assert normalize_palette_brightness(select_interesting_colors(palette)) == [(255, 255, 255)] * 7

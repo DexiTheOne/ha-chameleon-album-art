@@ -93,7 +93,9 @@ def normalize_palette_brightness(colors: list[RGBColor]) -> list[RGBColor]:
     for color in colors:
         r, g, b = clamp_rgb_color(color)
         h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
-        if v == 0 or s == 0:
+        # Quantization/compression can give gray tiny unequal channels.
+        # Those near-neutral swatches have no stable hue to amplify.
+        if v == 0 or s <= 0.03:
             result.append((255, 255, 255))
             continue
         bright_r, bright_g, bright_b = colorsys.hsv_to_rgb(h, max(s, 0.65), 1.0)

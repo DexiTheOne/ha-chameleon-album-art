@@ -348,3 +348,21 @@ async def test_shutdown_restores_effect_settings_even_when_cancelled():
     final = session.posts[1]["seg"][0]
     assert final == {key: value for key, value in {**source, "on": False}.items() if key != "bri"}
     assert session.posts[1]["on"] is False
+
+
+def test_weighted_palette_secondary_slots_do_not_repeat_primary_hue():
+    blue, blue_shade, green, red = (59, 109, 204), (100, 150, 220), (30, 180, 40), (200, 40, 30)
+    source = [blue] * 4 + [blue_shade, green, red]
+    assert three_palette_colors(source) == [blue, green, red]
+    assert three_palette_colors([blue] * 4 + [red] * 3) == [blue, red, red]
+    assert three_palette_colors([blue] * 4 + [red] * 3, 1) == [red, blue, blue]
+
+
+def test_neutral_secondary_is_distinct_from_chromatic_primary():
+    blue, white, gray = (50, 100, 200), (220, 220, 220), (180, 180, 180)
+    assert three_palette_colors([blue, white, gray]) == [blue, white, white]
+
+
+def test_single_hue_artwork_does_not_invent_contrasting_colors():
+    blue = (121, 156, 204)
+    assert three_palette_colors([blue] * 7) == [blue] * 3

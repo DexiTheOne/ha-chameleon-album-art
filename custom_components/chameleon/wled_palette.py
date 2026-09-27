@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import colorsys
 import logging
 
 from homeassistant.core import HomeAssistant
@@ -29,11 +30,32 @@ async def _read_json(session, url: str):
 
 
 def three_palette_colors(colors: list[RGBColor], offset: int = 0) -> list[RGBColor]:
-    """Fill three slots by repeating source swatches when necessary."""
+    """Keep primary fixed; choose other hue families for secondary slots.
+
+    With two available hue families, repeat the contrasting secondary rather
+    than the primary. A single-family image retains source-only repetition.
+    """
     unique = list(dict.fromkeys(clamp_rgb_color(color) for color in colors))
     if not unique:
         return []
-    return [unique[(offset + index) % len(unique)] for index in range(3)]
+    ordered = [unique[(offset + index) % len(unique)] for index in range(len(unique))]
+    primary = ordered[0]
+
+    def distinct(first: RGBColor, second: RGBColor) -> bool:
+        hue_a, saturation_a, _ = colorsys.rgb_to_hsv(*(channel / 255 for channel in first))
+        hue_b, saturation_b, _ = colorsys.rgb_to_hsv(*(channel / 255 for channel in second))
+        neutral_a, neutral_b = saturation_a < 0.10, saturation_b < 0.10
+        if neutral_a or neutral_b:
+            return neutral_a != neutral_b
+        distance = abs(hue_a - hue_b)
+        return min(distance, 1 - distance) >= 20 / 360
+
+    alternatives = [color for color in ordered[1:] if distinct(primary, color)]
+    if not alternatives:
+        return [ordered[index % len(ordered)] for index in range(3)]
+    secondary = alternatives[0]
+    tertiary = next((color for color in alternatives[1:] if distinct(secondary, color)), secondary)
+    return [primary, secondary, tertiary]
 
 
 def _transition_style(segments: list[dict], selected_style: int) -> int:
@@ -207,7 +229,7 @@ async def send_wled_transition(
                 "on": segment_brightness.get(segment["id"], brightness) > 0,
                 **({"bri": round(segment_brightness[segment["id"]] * 255 / 100)} if segment["id"] in segment_brightness else {}),
                 "col": [list(color) for color in (
-                    three_palette_colors([segment_colors[segment["id"]], *palette]
+                    three_palette_colors([segment_colors[segment["id"]], *colors]
                                          if segment["id"] in segment_colors else palette)
                     if send_palette else [segment_colors.get(segment["id"], palette[0])]
                 )],

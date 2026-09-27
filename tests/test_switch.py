@@ -86,3 +86,25 @@ async def test_interesting_colors_switch_updates_light_and_preserves_options():
         entry, options={"normalize_brightness": True, CONF_INTERESTING_COLORS: True}
     )
     light.set_interesting_colors.assert_called_once_with(True)
+
+
+@pytest.mark.asyncio
+async def test_coverage_switch_preserves_randomization_and_updates_light():
+    from custom_components.chameleon.const import CONF_COVERAGE_BASED_ASSIGNMENT
+    from custom_components.chameleon.switch import ChameleonCoverageBasedAssignmentSwitch
+    entry = MagicMock()
+    entry.entry_id = "entry-1"
+    entry.data = {}
+    entry.options = {CONF_RANDOMIZE_COLOR_ASSIGNMENT: True}
+    hass = MagicMock()
+    light = MagicMock()
+    hass.data = {DOMAIN: {entry.entry_id: {"chameleon_light": light}}}
+    with patch("custom_components.chameleon.switch.get_entity_base_name", return_value="one"):
+        control = ChameleonCoverageBasedAssignmentSwitch(hass, entry, ["light.one"])
+    assert control.is_on is False
+    await control.async_turn_on()
+    hass.config_entries.async_update_entry.assert_called_once_with(
+        entry, options={CONF_RANDOMIZE_COLOR_ASSIGNMENT: True, CONF_COVERAGE_BASED_ASSIGNMENT: True}
+    )
+    light.set_coverage_based_assignment.assert_called_once_with(True)
+    assert control.is_on is True

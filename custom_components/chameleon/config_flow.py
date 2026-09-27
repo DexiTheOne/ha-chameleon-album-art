@@ -17,6 +17,7 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    CONF_COVERAGE_BASED_ASSIGNMENT,
     CONF_INTERESTING_COLORS,
     CONF_LIGHT_ENTITIES,
     CONF_MEDIA_PLAYER_ENTITY,
@@ -25,6 +26,7 @@ from .const import (
     CONF_SEND_PALETTE_TO_WLED,
     CONF_TRANSITION,
     CONF_WLED_BLEND_STYLE,
+    DEFAULT_COVERAGE_BASED_ASSIGNMENT,
     DEFAULT_INTERESTING_COLORS,
     DEFAULT_NORMALIZE_BRIGHTNESS,
     DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT,
@@ -106,6 +108,10 @@ class ChameleonOptionsFlow(OptionsFlowWithReload):
             # The assignment switch owns this option. Keep it when the user
             # changes media-player or brightness settings through this flow.
             options = dict(user_input)
+            options[CONF_COVERAGE_BASED_ASSIGNMENT] = self.config_entry.options.get(
+                CONF_COVERAGE_BASED_ASSIGNMENT,
+                self.config_entry.data.get(CONF_COVERAGE_BASED_ASSIGNMENT, DEFAULT_COVERAGE_BASED_ASSIGNMENT),
+            )
             options[CONF_INTERESTING_COLORS] = self.config_entry.options.get(
                 CONF_INTERESTING_COLORS,
                 self.config_entry.data.get(CONF_INTERESTING_COLORS, DEFAULT_INTERESTING_COLORS),

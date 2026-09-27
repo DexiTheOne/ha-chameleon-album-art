@@ -50,6 +50,9 @@
       },
       "interesting_colors": {
         "name": "Only Interesting Colors"
+      },
+      "coverage_based_assignment": {
+        "name": "Coverage Based Assignment"
       }
     },
     "select": {

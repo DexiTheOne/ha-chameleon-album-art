@@ -64,6 +64,7 @@ from .color_extractor import (
     select_interesting_colors,
 )
 from .const import (
+    CONF_COVERAGE_BASED_ASSIGNMENT,
     CONF_INTERESTING_COLORS,
     CONF_LIGHT_ENTITIES,
     CONF_LIGHT_ENTITY,
@@ -74,6 +75,7 @@ from .const import (
     CONF_TRANSITION,
     DEFAULT_BRIGHTNESS,
     DEFAULT_COLOR_COUNT,
+    DEFAULT_COVERAGE_BASED_ASSIGNMENT,
     DEFAULT_INTERESTING_COLORS,
     DEFAULT_NORMALIZE_BRIGHTNESS,
     DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT,
@@ -160,6 +162,9 @@ async def async_setup_entry(
     interesting_colors = entry.options.get(
         CONF_INTERESTING_COLORS, entry.data.get(CONF_INTERESTING_COLORS, DEFAULT_INTERESTING_COLORS)
     )
+    coverage_based_assignment = entry.options.get(
+        CONF_COVERAGE_BASED_ASSIGNMENT, entry.data.get(CONF_COVERAGE_BASED_ASSIGNMENT, DEFAULT_COVERAGE_BASED_ASSIGNMENT)
+    )
     randomize_color_assignment = entry.options.get(
         CONF_RANDOMIZE_COLOR_ASSIGNMENT,
         entry.data.get(CONF_RANDOMIZE_COLOR_ASSIGNMENT, DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT),
@@ -170,7 +175,7 @@ async def async_setup_entry(
     )
 
     async_add_entities(
-        [ChameleonLight(hass, entry, light_entities, initial_transition, media_player_entity, normalize_brightness, randomize_color_assignment, interesting_colors, send_palette_to_wled)],
+        [ChameleonLight(hass, entry, light_entities, initial_transition, media_player_entity, normalize_brightness, randomize_color_assignment, interesting_colors, send_palette_to_wled, coverage_based_assignment)],
         True,
     )
 
@@ -212,6 +217,7 @@ class ChameleonLight(LightEntity):
         randomize_color_assignment: bool = DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT,
         interesting_colors: bool = DEFAULT_INTERESTING_COLORS,
         send_palette_to_wled: bool = DEFAULT_SEND_PALETTE_TO_WLED,
+        coverage_based_assignment: bool = DEFAULT_COVERAGE_BASED_ASSIGNMENT,
     ) -> None:
         """Initialize the Chameleon light entity."""
         self.hass = hass
@@ -221,6 +227,7 @@ class ChameleonLight(LightEntity):
         self._media_player_entity = media_player_entity
         self._normalize_brightness = normalize_brightness
         self._interesting_colors = interesting_colors
+        self._coverage_based_assignment = coverage_based_assignment
         self._send_palette_to_wled = send_palette_to_wled
         self._randomize_color_assignment = randomize_color_assignment
         self._random_assignment_order: list[str] | None = None
@@ -287,15 +294,21 @@ class ChameleonLight(LightEntity):
         self, colors: list[RGBColor], white_fraction: float = 0.0, coverage: list[float] | None = None,
     ) -> list[RGBColor]:
         """Adjust source-image RGB values before static or animated output."""
+        source = colors
         if self._interesting_colors:
-            source = colors
             colors = select_interesting_colors(colors, white_fraction, coverage)
-            if white_fraction < 0.7:
-                colors = distribute_palette_by_coverage(colors, source, coverage, len(self._light_entities))
+        if self._coverage_based_assignment and not (self._interesting_colors and white_fraction >= 0.7):
+            colors = distribute_palette_by_coverage(colors, source, coverage, len(self._light_entities))
+        if self._interesting_colors:
             colors = balance_mostly_white_palette(colors, white_fraction, len(self._light_entities))
         if self._normalize_brightness:
             return normalize_palette_brightness(colors)
         return colors
+
+    def set_coverage_based_assignment(self, enabled: bool) -> None:
+        """Choose proportional color counts for the next artwork or image scene."""
+        self._coverage_based_assignment = enabled
+        self.async_write_ha_state()
 
     def set_interesting_colors(self, enabled: bool) -> None:
         """Use the selected filter for the next image or artwork palette."""
@@ -409,6 +422,7 @@ class ChameleonLight(LightEntity):
             "applied_colors": self._applied_colors,
             "normalize_brightness": self._normalize_brightness,
             "randomize_color_assignment": self._randomize_color_assignment,
+            "coverage_based_assignment": self._coverage_based_assignment,
         }
 
         if self._media_player_entity:
@@ -807,7 +821,7 @@ class ChameleonLight(LightEntity):
             white_fraction, coverage = await asyncio.gather(
                 extract_white_fraction(self.hass, image_bytes),
                 extract_palette_coverage(self.hass, image_bytes, colors),
-            ) if self._interesting_colors else (0.0, None)
+            ) if self._interesting_colors or self._coverage_based_assignment else (0.0, None)
         finally:
             # Only palette/white-coverage data is needed for device updates.
             del image_bytes
@@ -921,7 +935,7 @@ class ChameleonLight(LightEntity):
         white_fraction, coverage = await asyncio.gather(
             extract_white_fraction(self.hass, image_path),
             extract_palette_coverage(self.hass, image_path, colors),
-        ) if self._interesting_colors else (0.0, None)
+        ) if self._interesting_colors or self._coverage_based_assignment else (0.0, None)
         if not colors and white_fraction < 0.7:
             _LOGGER.error("Failed to extract color palette from %s", image_path)
             return ApplyColorsResult()

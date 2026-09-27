@@ -169,6 +169,7 @@ class TestChameleonOptionsFlow:
             CONF_RANDOMIZE_COLOR_ASSIGNMENT: True,
             "interesting_colors": False,
             "send_palette_to_wled": False,
+            "coverage_based_assignment": False,
         }
 
     @pytest.mark.asyncio
@@ -180,7 +181,7 @@ class TestChameleonOptionsFlow:
         flow.config_entry = MagicMock(options={CONF_RANDOMIZE_COLOR_ASSIGNMENT: True}, data={})
         result = await flow.async_step_init({CONF_NORMALIZE_BRIGHTNESS: True})
 
-        assert result["data"] == {CONF_NORMALIZE_BRIGHTNESS: True, CONF_RANDOMIZE_COLOR_ASSIGNMENT: True, "interesting_colors": False, "send_palette_to_wled": False}
+        assert result["data"] == {CONF_NORMALIZE_BRIGHTNESS: True, CONF_RANDOMIZE_COLOR_ASSIGNMENT: True, "interesting_colors": False, "send_palette_to_wled": False, "coverage_based_assignment": False}
 
     @pytest.mark.asyncio
     async def test_interesting_colors_option_survives_configure(self):
@@ -208,3 +209,14 @@ class TestChameleonOptionsFlow:
         fields = {key.schema for key in result["data_schema"].schema}
         assert CONF_RANDOMIZE_COLOR_ASSIGNMENT not in fields
         assert "interesting_colors" not in fields
+
+
+@pytest.mark.asyncio
+async def test_configure_preserves_independent_coverage_assignment():
+    from custom_components.chameleon.config_flow import ChameleonOptionsFlow
+    from custom_components.chameleon.const import CONF_COVERAGE_BASED_ASSIGNMENT
+    flow = ChameleonOptionsFlow()
+    flow.config_entry = MagicMock(options={CONF_COVERAGE_BASED_ASSIGNMENT: True, CONF_RANDOMIZE_COLOR_ASSIGNMENT: False}, data={})
+    result = await flow.async_step_init({CONF_MEDIA_PLAYER_ENTITY: "media_player.test"})
+    assert result["data"][CONF_COVERAGE_BASED_ASSIGNMENT] is True
+    assert result["data"][CONF_RANDOMIZE_COLOR_ASSIGNMENT] is False

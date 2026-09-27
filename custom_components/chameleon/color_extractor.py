@@ -273,6 +273,26 @@ async def extract_connected_warm_coverage(hass: HomeAssistant, image_source: byt
         return [0.0] * len(colors)
 
 
+def _sync_average_color(image_source: bytes | Path) -> RGBColor:
+    """Average every RGB pixel; do not amplify saturation or neutral tint noise."""
+    from PIL import Image, ImageStat
+
+    with ExitStack() as resources:
+        source = resources.enter_context(BytesIO(image_source)) if isinstance(image_source, bytes) else image_source
+        image = resources.enter_context(Image.open(source))
+        rgb = resources.enter_context(image.convert("RGB"))
+        return tuple(round(value) for value in ImageStat.Stat(rgb).mean)
+
+
+async def extract_average_color(hass: HomeAssistant, image_source: bytes | Path) -> RGBColor | None:
+    """Unavailable average retains the regular palette."""
+    try:
+        return await hass.async_add_executor_job(_sync_average_color, image_source)
+    except Exception as err:
+        _LOGGER.warning("Unable to average image color: %s", type(err).__name__)
+        return None
+
+
 def normalize_palette_brightness(colors: list[RGBColor]) -> list[RGBColor]:
     """Brighten artwork colors without increasing saturation.
 

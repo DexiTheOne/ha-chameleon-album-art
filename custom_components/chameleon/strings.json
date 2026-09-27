@@ -53,6 +53,9 @@
       },
       "coverage_based_assignment": {
         "name": "Coverage Based Assignment"
+      },
+      "use_averaged_color": {
+        "name": "Use averaged color instead of pure white"
       }
     },
     "select": {

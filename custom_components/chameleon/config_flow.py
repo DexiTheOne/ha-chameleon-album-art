@@ -25,6 +25,7 @@ from .const import (
     CONF_RANDOMIZE_COLOR_ASSIGNMENT,
     CONF_SEND_PALETTE_TO_WLED,
     CONF_TRANSITION,
+    CONF_USE_AVERAGED_COLOR,
     CONF_WLED_BLEND_STYLE,
     DEFAULT_COVERAGE_BASED_ASSIGNMENT,
     DEFAULT_INTERESTING_COLORS,
@@ -32,6 +33,7 @@ from .const import (
     DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT,
     DEFAULT_SEND_PALETTE_TO_WLED,
     DEFAULT_TRANSITION,
+    DEFAULT_USE_AVERAGED_COLOR,
     DOMAIN,
     MAX_TRANSITION,
     MIN_TRANSITION,
@@ -108,6 +110,10 @@ class ChameleonOptionsFlow(OptionsFlowWithReload):
             # The assignment switch owns this option. Keep it when the user
             # changes media-player or brightness settings through this flow.
             options = dict(user_input)
+            options[CONF_USE_AVERAGED_COLOR] = self.config_entry.options.get(
+                CONF_USE_AVERAGED_COLOR,
+                self.config_entry.data.get(CONF_USE_AVERAGED_COLOR, DEFAULT_USE_AVERAGED_COLOR),
+            )
             options[CONF_COVERAGE_BASED_ASSIGNMENT] = self.config_entry.options.get(
                 CONF_COVERAGE_BASED_ASSIGNMENT,
                 self.config_entry.data.get(CONF_COVERAGE_BASED_ASSIGNMENT, DEFAULT_COVERAGE_BASED_ASSIGNMENT),

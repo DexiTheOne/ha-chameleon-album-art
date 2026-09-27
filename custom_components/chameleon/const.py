@@ -25,6 +25,9 @@ CONF_INTERESTING_COLORS: Final = "interesting_colors"
 DEFAULT_INTERESTING_COLORS: Final = False
 CONF_SEND_PALETTE_TO_WLED: Final = "send_palette_to_wled"
 DEFAULT_SEND_PALETTE_TO_WLED: Final = False
+CONF_USE_AVERAGED_COLOR: Final = "use_averaged_color"
+DEFAULT_USE_AVERAGED_COLOR: Final = False
+
 CONF_COVERAGE_BASED_ASSIGNMENT: Final = "coverage_based_assignment"
 DEFAULT_COVERAGE_BASED_ASSIGNMENT: Final = False
 CONF_RANDOMIZE_COLOR_ASSIGNMENT: Final = "randomize_color_assignment"

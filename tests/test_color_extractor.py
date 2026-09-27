@@ -534,3 +534,28 @@ def test_damn_the_torpedoes_keeps_red_background_and_rejects_portrait_skin():
     assert selected == [source[1], source[6]]
     assert all(color not in selected for color in source[2:5])
     assert distribute_palette_by_coverage(selected, source, coverage, 7) == [source[1]] * 7
+
+
+def test_whats_going_on_preserves_approved_greens_and_rejects_large_portrait():
+    from collections import Counter
+
+    source = [(44, 59, 52), (199, 181, 161), (125, 120, 105), (134, 165, 173),
+              (90, 128, 130), (84, 118, 104), (142, 164, 155)]
+    coverage = [0.57611084, 0.07366943, 0.06341553, 0.02154541, 0.07238770, 0.17388916, 0.01898193]
+    selected = select_interesting_colors(source, coverage=coverage,
+                                         connected_coverage=[0, 0.02984619, 0, 0, 0, 0, 0])
+    assert set(selected) == {source[0], source[3], source[4], source[5], source[6]}
+    slots = normalize_palette_brightness(distribute_palette_by_coverage(selected, source, coverage, 7))
+    assert Counter(slots) == Counter({(152, 204, 180): 5, (145, 204, 180): 1, (141, 201, 204): 1})
+
+
+def test_average_color_uses_all_pixels_without_quantization():
+    from custom_components.chameleon.color_extractor import _sync_average_color
+
+    image = Image.new("RGB", (10, 10), (240, 220, 200))
+    for x in range(5):
+        for y in range(10):
+            image.putpixel((x, y), (20, 40, 60))
+    source = BytesIO()
+    image.save(source, format="PNG")
+    assert _sync_average_color(source.getvalue()) == (130, 130, 130)

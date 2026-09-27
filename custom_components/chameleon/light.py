@@ -56,6 +56,7 @@ from .color_extractor import (
     balance_mostly_white_palette,
     clamp_rgb_color,
     distribute_palette_by_coverage,
+    extract_average_color,
     extract_color_palette,
     extract_color_palette_bytes,
     extract_connected_warm_coverage,
@@ -74,6 +75,7 @@ from .const import (
     CONF_RANDOMIZE_COLOR_ASSIGNMENT,
     CONF_SEND_PALETTE_TO_WLED,
     CONF_TRANSITION,
+    CONF_USE_AVERAGED_COLOR,
     DEFAULT_BRIGHTNESS,
     DEFAULT_COLOR_COUNT,
     DEFAULT_COVERAGE_BASED_ASSIGNMENT,
@@ -82,6 +84,7 @@ from .const import (
     DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT,
     DEFAULT_SEND_PALETTE_TO_WLED,
     DEFAULT_TRANSITION,
+    DEFAULT_USE_AVERAGED_COLOR,
     DEFAULT_WLED_BLEND_STYLE,
     DOMAIN,
     IMAGE_DIRECTORY,
@@ -163,8 +166,12 @@ async def async_setup_entry(
     interesting_colors = entry.options.get(
         CONF_INTERESTING_COLORS, entry.data.get(CONF_INTERESTING_COLORS, DEFAULT_INTERESTING_COLORS)
     )
+    use_averaged_color = entry.options.get(
+        CONF_USE_AVERAGED_COLOR, entry.data.get(CONF_USE_AVERAGED_COLOR, DEFAULT_USE_AVERAGED_COLOR)
+    )
     coverage_based_assignment = entry.options.get(
-        CONF_COVERAGE_BASED_ASSIGNMENT, entry.data.get(CONF_COVERAGE_BASED_ASSIGNMENT, DEFAULT_COVERAGE_BASED_ASSIGNMENT)
+        CONF_COVERAGE_BASED_ASSIGNMENT,
+        entry.data.get(CONF_COVERAGE_BASED_ASSIGNMENT, DEFAULT_COVERAGE_BASED_ASSIGNMENT)
     )
     randomize_color_assignment = entry.options.get(
         CONF_RANDOMIZE_COLOR_ASSIGNMENT,
@@ -176,7 +183,7 @@ async def async_setup_entry(
     )
 
     async_add_entities(
-        [ChameleonLight(hass, entry, light_entities, initial_transition, media_player_entity, normalize_brightness, randomize_color_assignment, interesting_colors, send_palette_to_wled, coverage_based_assignment)],
+        [ChameleonLight(hass, entry, light_entities, initial_transition, media_player_entity, normalize_brightness, randomize_color_assignment, interesting_colors, send_palette_to_wled, coverage_based_assignment, use_averaged_color)],
         True,
     )
 
@@ -219,6 +226,7 @@ class ChameleonLight(LightEntity):
         interesting_colors: bool = DEFAULT_INTERESTING_COLORS,
         send_palette_to_wled: bool = DEFAULT_SEND_PALETTE_TO_WLED,
         coverage_based_assignment: bool = DEFAULT_COVERAGE_BASED_ASSIGNMENT,
+        use_averaged_color: bool = DEFAULT_USE_AVERAGED_COLOR,
     ) -> None:
         """Initialize the Chameleon light entity."""
         self.hass = hass
@@ -229,6 +237,7 @@ class ChameleonLight(LightEntity):
         self._normalize_brightness = normalize_brightness
         self._interesting_colors = interesting_colors
         self._coverage_based_assignment = coverage_based_assignment
+        self._use_averaged_color = use_averaged_color
         self._send_palette_to_wled = send_palette_to_wled
         self._randomize_color_assignment = randomize_color_assignment
         self._random_assignment_order: list[str] | None = None
@@ -293,7 +302,7 @@ class ChameleonLight(LightEntity):
 
     def _prepare_palette(
         self, colors: list[RGBColor], white_fraction: float = 0.0, coverage: list[float] | None = None,
-        connected_coverage: list[float] | None = None,
+        connected_coverage: list[float] | None = None, average_color: tuple[int, int, int] | None = None,
     ) -> list[RGBColor]:
         """Adjust source-image RGB values before static or animated output."""
         source = colors
@@ -304,8 +313,21 @@ class ChameleonLight(LightEntity):
         if self._interesting_colors:
             colors = balance_mostly_white_palette(colors, white_fraction, len(self._light_entities))
         if self._normalize_brightness:
-            return normalize_palette_brightness(colors)
+            colors = normalize_palette_brightness(colors)
+        if self._use_averaged_color and average_color is not None and colors:
+            # Replace only bright near-neutrals; preserve every chromatic accent.
+            color = average_color
+            if self._normalize_brightness and 0 < max(color) < 204:
+                color = tuple(round(channel * 204 / max(color)) for channel in color)
+            colors = [color if max(candidate) >= 200 and
+                      (max(candidate) - min(candidate)) / max(candidate) <= 0.10 else candidate
+                      for candidate in colors]
         return colors
+
+    def set_use_averaged_color(self, enabled: bool) -> None:
+        """Persisted switch applies to the next image/artwork update."""
+        self._use_averaged_color = enabled
+        self.async_write_ha_state()
 
     def set_coverage_based_assignment(self, enabled: bool) -> None:
         """Choose proportional color counts for the next artwork or image scene."""
@@ -425,6 +447,7 @@ class ChameleonLight(LightEntity):
             "normalize_brightness": self._normalize_brightness,
             "randomize_color_assignment": self._randomize_color_assignment,
             "coverage_based_assignment": self._coverage_based_assignment,
+            "use_averaged_color": self._use_averaged_color,
         }
 
         if self._media_player_entity:
@@ -825,13 +848,14 @@ class ChameleonLight(LightEntity):
                 extract_palette_coverage(self.hass, image_bytes, colors),
                 extract_connected_warm_coverage(self.hass, image_bytes, colors),
             ) if self._interesting_colors or self._coverage_based_assignment else (0.0, None, None)
+            average_color = await extract_average_color(self.hass, image_bytes) if self._use_averaged_color else None
         finally:
             # Only palette/white-coverage data is needed for device updates.
             del image_bytes
         if not colors and white_fraction < 0.7:
             self._last_error = "Unable to extract colors from album artwork"
             return
-        colors = self._prepare_palette(colors, white_fraction, coverage, connected_coverage)
+        colors = self._prepare_palette(colors, white_fraction, coverage, connected_coverage, average_color)
         if not colors:
             self._last_error = "No interesting colors found in album artwork"
             return
@@ -940,11 +964,12 @@ class ChameleonLight(LightEntity):
             extract_palette_coverage(self.hass, image_path, colors),
             extract_connected_warm_coverage(self.hass, image_path, colors),
         ) if self._interesting_colors or self._coverage_based_assignment else (0.0, None, None)
+        average_color = await extract_average_color(self.hass, image_path) if self._use_averaged_color else None
         if not colors and white_fraction < 0.7:
             _LOGGER.error("Failed to extract color palette from %s", image_path)
             return ApplyColorsResult()
 
-        colors = self._prepare_palette(colors, white_fraction, coverage, connected_coverage)
+        colors = self._prepare_palette(colors, white_fraction, coverage, connected_coverage, average_color)
 
         if not colors:
             self._last_error = "No interesting colors found in image scene"

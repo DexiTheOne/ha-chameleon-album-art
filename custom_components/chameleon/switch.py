@@ -13,9 +13,11 @@ from .const import (
     CONF_LIGHT_ENTITIES,
     CONF_LIGHT_ENTITY,
     CONF_RANDOMIZE_COLOR_ASSIGNMENT,
+    CONF_USE_AVERAGED_COLOR,
     DEFAULT_COVERAGE_BASED_ASSIGNMENT,
     DEFAULT_INTERESTING_COLORS,
     DEFAULT_RANDOMIZE_COLOR_ASSIGNMENT,
+    DEFAULT_USE_AVERAGED_COLOR,
     DOMAIN,
 )
 from .entity_controls import LightEntitySwitch, controlled_entities
@@ -34,6 +36,7 @@ async def async_setup_entry(
         ChameleonRandomizeColorAssignmentSwitch(hass, entry, light_entities),
         ChameleonInterestingColorsSwitch(hass, entry, light_entities),
         ChameleonCoverageBasedAssignmentSwitch(hass, entry, light_entities),
+        ChameleonUseAveragedColorSwitch(hass, entry, light_entities),
     ], True)
 
 
@@ -151,7 +154,8 @@ class ChameleonCoverageBasedAssignmentSwitch(SwitchEntity):
         self._entry = entry
         self._light_entities = light_entities
         self._enabled = entry.options.get(
-            CONF_COVERAGE_BASED_ASSIGNMENT, entry.data.get(CONF_COVERAGE_BASED_ASSIGNMENT, DEFAULT_COVERAGE_BASED_ASSIGNMENT)
+            CONF_COVERAGE_BASED_ASSIGNMENT,
+            entry.data.get(CONF_COVERAGE_BASED_ASSIGNMENT, DEFAULT_COVERAGE_BASED_ASSIGNMENT)
         )
         base_name = get_entity_base_name(hass, light_entities)
         self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_coverage_based_assignment"
@@ -186,4 +190,55 @@ class ChameleonCoverageBasedAssignmentSwitch(SwitchEntity):
         light = self.hass.data.get(DOMAIN, {}).get(self._entry.entry_id, {}).get("chameleon_light")
         if light is not None:
             light.set_coverage_based_assignment(enabled)
+        self.async_write_ha_state()
+
+
+class ChameleonUseAveragedColorSwitch(SwitchEntity):
+    """Use the image average when output would otherwise be white."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "use_averaged_color"
+    _attr_icon = "mdi:palette"
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, light_entities: list[str]) -> None:
+        self.hass = hass
+        self._entry = entry
+        self._light_entities = light_entities
+        self._enabled = entry.options.get(
+            CONF_USE_AVERAGED_COLOR,
+            entry.data.get(CONF_USE_AVERAGED_COLOR, DEFAULT_USE_AVERAGED_COLOR)
+        )
+        base_name = get_entity_base_name(hass, light_entities)
+        self._attr_unique_id = f"{DOMAIN}_{entry.entry_id}_use_averaged_color"
+        self.entity_id = f"switch.chameleon_{base_name}_use_averaged_color"
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, self._entry.entry_id)},
+            "name": get_chameleon_device_name(self.hass, self._light_entities),
+            "manufacturer": "Chameleon",
+            "model": "Scene Selector",
+        }
+
+    @property
+    def is_on(self) -> bool:
+        return self._enabled
+
+    async def async_turn_on(self, **kwargs) -> None:
+        await self._set_enabled(True)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        await self._set_enabled(False)
+
+    async def _set_enabled(self, enabled: bool) -> None:
+        if self._enabled == enabled:
+            return
+        self.hass.config_entries.async_update_entry(
+            self._entry, options={**self._entry.options, CONF_USE_AVERAGED_COLOR: enabled}
+        )
+        self._enabled = enabled
+        light = self.hass.data.get(DOMAIN, {}).get(self._entry.entry_id, {}).get("chameleon_light")
+        if light is not None:
+            light.set_use_averaged_color(enabled)
         self.async_write_ha_state()

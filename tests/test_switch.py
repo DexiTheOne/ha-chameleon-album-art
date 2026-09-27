@@ -108,3 +108,30 @@ async def test_coverage_switch_preserves_randomization_and_updates_light():
     )
     light.set_coverage_based_assignment.assert_called_once_with(True)
     assert control.is_on is True
+
+
+
+@pytest.mark.asyncio
+async def test_average_switch_defaults_off_and_preserves_other_options():
+    from custom_components.chameleon.const import CONF_USE_AVERAGED_COLOR
+    from custom_components.chameleon.switch import ChameleonUseAveragedColorSwitch
+
+    entry = MagicMock()
+    entry.entry_id = "entry-1"
+    entry.data = {}
+    entry.options = {CONF_INTERESTING_COLORS: True, "normalize_brightness": True}
+    light = MagicMock()
+    hass = MagicMock()
+    hass.data = {DOMAIN: {entry.entry_id: {"chameleon_light": light}}}
+    with patch("custom_components.chameleon.switch.get_entity_base_name", return_value="one"):
+        control = ChameleonUseAveragedColorSwitch(hass, entry, ["light.one"])
+    assert control.is_on is False
+    await control.async_turn_on()
+    hass.config_entries.async_update_entry.assert_called_once_with(
+        entry, options={CONF_INTERESTING_COLORS: True, "normalize_brightness": True, CONF_USE_AVERAGED_COLOR: True}
+    )
+    light.set_use_averaged_color.assert_called_once_with(True)
+    entry.options = {CONF_USE_AVERAGED_COLOR: True}
+    with patch("custom_components.chameleon.switch.get_entity_base_name", return_value="one"):
+        restored = ChameleonUseAveragedColorSwitch(hass, entry, ["light.one"])
+    assert restored.is_on is True

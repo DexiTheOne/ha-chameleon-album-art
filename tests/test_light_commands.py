@@ -276,7 +276,7 @@ async def test_artwork_bytes_released_before_light_updates_palette_retained(grou
     group._media_player_entity = "media_player.test"
     group._interesting_colors = True
     group._normalize_brightness = False
-    group._prepare_palette = lambda colors, white_fraction, coverage, connected_coverage: colors
+    group._prepare_palette = lambda colors, white_fraction, coverage, connected_coverage, average_color: colors
     group._async_download_artwork = AsyncMock(return_value=b"artwork")
 
     async def apply(colors, brightness):
@@ -563,3 +563,38 @@ def test_prepared_palette_assigns_slots_by_coverage_before_normalization(group):
     assert len(group._prepare_palette(source, 0.0, [0.46655, 0.22198, 0.05975])) == 7
     group.set_coverage_based_assignment(False)
     assert len(group._prepare_palette(source, 0.0, [0.46655, 0.22198, 0.05975])) == 3
+
+
+
+def test_average_toggle_replaces_only_white_and_keeps_chromatic_accents(group):
+    group._use_averaged_color = True
+    group._interesting_colors = False
+    group._normalize_brightness = False
+    group._coverage_based_assignment = False
+    assert group._prepare_palette([(255, 255, 255), (204, 198, 187), (154, 192, 204)],
+                                  average_color=(217, 212, 209)) == [(217, 212, 209), (217, 212, 209), (154, 192, 204)]
+
+
+def test_average_preserves_subtle_tint_and_does_not_boost_saturation(group):
+    group._use_averaged_color = True
+    group._interesting_colors = False
+    group._normalize_brightness = True
+    assert group._prepare_palette([(255, 255, 255)], average_color=(217, 212, 209)) == [(217, 212, 209)]
+    assert group._prepare_palette([(255, 255, 255)], average_color=(100, 90, 80)) == [(204, 184, 163)]
+
+
+def test_disabled_or_missing_average_retains_regular_output(group):
+    group._interesting_colors = False
+    group._normalize_brightness = False
+    palette = [(255, 255, 255), (50, 100, 160)]
+    assert group._prepare_palette(palette, average_color=(217, 212, 209)) == palette
+    group._use_averaged_color = True
+    assert group._prepare_palette(palette) == palette
+
+
+def test_average_does_not_replace_approved_green_portrait_output(group):
+    group._use_averaged_color = True
+    group._interesting_colors = False
+    group._normalize_brightness = False
+    palette = [(152, 204, 180), (145, 204, 180), (141, 201, 204)]
+    assert group._prepare_palette(palette, average_color=(110, 100, 90)) == palette

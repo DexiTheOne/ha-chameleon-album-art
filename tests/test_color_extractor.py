@@ -433,3 +433,104 @@ def test_unavailable_or_invalid_coverage_retains_palette(coverage):
 def test_duplicate_source_swatches_combine_coverage_without_duplicate_quota():
     blue, red = (40, 80, 160), (160, 40, 40)
     assert distribute_palette_by_coverage([blue, blue, red], [blue, blue, red], [0.4, 0.4, 0.2], 5) == [blue] * 4 + [red]
+
+
+def test_dominant_salmon_background_beats_tinted_black_center():
+    from custom_components.chameleon.color_extractor import _sync_connected_warm_coverage, _sync_palette_coverage
+
+    salmon, shadow = (240, 156, 132), (20, 11, 4)
+    image = Image.new("RGB", (100, 100), salmon)
+    from PIL import ImageDraw
+    ImageDraw.Draw(image).rectangle((34, 34, 65, 65), fill=shadow)
+    source = BytesIO()
+    image.save(source, format="PNG")
+    coverage = _sync_palette_coverage(source.getvalue(), [salmon, shadow])
+    patches = _sync_connected_warm_coverage(source.getvalue(), [salmon, shadow])
+    assert select_interesting_colors([salmon, shadow], coverage=coverage, connected_coverage=patches) == [salmon]
+    assert normalize_palette_brightness([salmon]) == [salmon]
+
+
+def test_fragmented_peach_does_not_relax_skin_penalty():
+    from custom_components.chameleon.color_extractor import _sync_connected_warm_coverage, _sync_palette_coverage
+
+    peach, white = (234, 202, 183), (240, 240, 240)
+    image = Image.new("RGB", (100, 100), white)
+    # Over 60% total peach, but separated into small islands by white lines.
+    for y in range(100):
+        for x in range(100):
+            if x % 10 < 8 and y % 10 < 8:
+                image.putpixel((x, y), peach)
+    source = BytesIO()
+    image.save(source, format="PNG")
+    coverage = _sync_palette_coverage(source.getvalue(), [peach, white])
+    patches = _sync_connected_warm_coverage(source.getvalue(), [peach, white])
+    assert coverage[0] > 0.60
+    assert patches[0] < 0.01
+    assert select_interesting_colors([peach, white], coverage=coverage, connected_coverage=patches) == [white]
+
+
+def test_white_nearest_to_peach_is_not_a_warm_patch():
+    from custom_components.chameleon.color_extractor import _sync_connected_warm_coverage
+
+    peach, gray = (234, 202, 183), (107, 105, 99)
+    source = BytesIO()
+    Image.new("RGB", (32, 32), "white").save(source, format="PNG")
+    patches = _sync_connected_warm_coverage(source.getvalue(), [peach, gray])
+    assert patches == [0.0, 0.0]
+    assert select_interesting_colors([peach, gray], coverage=[0.95, 0.05], connected_coverage=patches) == [gray]
+
+
+@pytest.mark.parametrize("patch", [None, [], [0.29, 0], [float("nan"), 0], [float("inf"), 0], [1.1, 0]])
+def test_missing_or_invalid_patch_preserves_skin_ranking(patch):
+    peach, dark = (234, 202, 183), (13, 27, 20)
+    assert select_interesting_colors([peach, dark], coverage=[0.75, 0.25], connected_coverage=patch) == [dark]
+
+
+def test_saved_love_bird_peach_background_exception():
+    peach, cream, gray = (234, 202, 183), (165, 160, 151), (107, 105, 99)
+    assert select_interesting_colors([peach, cream, gray], coverage=[0.7405, 0.032, 0.012],
+                                     connected_coverage=[0.317, 0, 0]) == [peach]
+
+
+def test_sunstorm_substantial_greens_share_palette_with_small_pink_accent():
+    source = [(224, 205, 151), (17, 17, 15), (107, 95, 77), (133, 150, 126),
+              (65, 86, 70), (166, 89, 99), (107, 126, 144)]
+    coverage = [0.200317, 0.468689, 0.084229, 0.077271, 0.130493, 0.025146, 0.013855]
+    selected = select_interesting_colors(source, coverage=coverage, connected_coverage=[0.048218, 0, 0, 0, 0, 0, 0])
+    assert selected == [source[5], source[4], source[3]]
+    assert source[0] not in selected and source[2] not in selected
+    assert source[1] not in selected
+    slots = distribute_palette_by_coverage(selected, source, coverage, 7)
+    assert slots.count(source[5]) == 1
+    assert slots.count(source[4]) == 4
+    assert slots.count(source[3]) == 2
+
+
+@pytest.mark.parametrize("area", [0.049, -0.5, float("nan"), float("inf"), 1.1])
+def test_small_or_invalid_non_skin_area_does_not_compete_with_saturated_colors(area):
+    green, pink = (65, 86, 70), (166, 89, 99)
+    assert select_interesting_colors([green, pink], coverage=[area, 0.025]) == [pink]
+
+
+def test_substantial_portrait_skin_remains_penalized():
+    skin, green, pink = (224, 205, 151), (65, 86, 70), (166, 89, 99)
+    assert select_interesting_colors([skin, green, pink], coverage=[0.80, 0.15, 0.05],
+                                     connected_coverage=[0.05, 0, 0]) == [pink, green]
+
+
+@pytest.mark.parametrize("shadow", [(20, 11, 4), (20, 20, 4), (17, 17, 15), (43, 22, 23),
+                                    (40, 38, 37), (63, 48, 54), (132, 140, 132)])
+def test_coverage_promotion_never_elevates_shadow_or_neutral_tints(shadow):
+    green, pink = (65, 86, 70), (166, 89, 99)
+    assert select_interesting_colors([shadow, green, pink], coverage=[0.70, 0.25, 0.05]) == [pink, green]
+
+
+def test_damn_the_torpedoes_keeps_red_background_and_rejects_portrait_skin():
+    source = [(19, 12, 12), (172, 31, 68), (215, 190, 177), (178, 114, 83),
+              (101, 49, 48), (169, 125, 127), (222, 140, 164)]
+    coverage = [0.15997, 0.56256, 0.08178, 0.06312, 0.09034, 0.02685, 0.01538]
+    selected = select_interesting_colors(source, coverage=coverage,
+                                         connected_coverage=[0, 0, 0.02418, 0.02493, 0, 0, 0])
+    assert selected == [source[1], source[6]]
+    assert all(color not in selected for color in source[2:5])
+    assert distribute_palette_by_coverage(selected, source, coverage, 7) == [source[1]] * 7

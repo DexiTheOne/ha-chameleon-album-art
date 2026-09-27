@@ -276,7 +276,7 @@ async def test_artwork_bytes_released_before_light_updates_palette_retained(grou
     group._media_player_entity = "media_player.test"
     group._interesting_colors = True
     group._normalize_brightness = False
-    group._prepare_palette = lambda colors, white_fraction, coverage: colors
+    group._prepare_palette = lambda colors, white_fraction, coverage, connected_coverage: colors
     group._async_download_artwork = AsyncMock(return_value=b"artwork")
 
     async def apply(colors, brightness):
@@ -294,12 +294,15 @@ async def test_artwork_bytes_released_before_light_updates_palette_retained(grou
         "custom_components.chameleon.light.extract_white_fraction", new_callable=AsyncMock, return_value=0.2
     ) as white, patch(
         "custom_components.chameleon.light.extract_palette_coverage", new_callable=AsyncMock, return_value=[1.0]
-    ) as coverage:
+    ) as coverage, patch(
+        "custom_components.chameleon.light.extract_connected_warm_coverage", new_callable=AsyncMock, return_value=[0.0]
+    ) as connected:
         await group._apply_album_art(media_state=SimpleNamespace(
             state="playing", attributes={"entity_picture": "/cover.jpg"}
         ))
     white.assert_awaited_once_with(group.hass, b"artwork")
     coverage.assert_awaited_once_with(group.hass, b"artwork", [(255, 0, 0)])
+    connected.assert_awaited_once_with(group.hass, b"artwork", [(255, 0, 0)])
     assert group._extracted_palette == [(255, 0, 0)]
 
 

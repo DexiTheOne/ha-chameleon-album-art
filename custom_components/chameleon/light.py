@@ -58,6 +58,7 @@ from .color_extractor import (
     distribute_palette_by_coverage,
     extract_color_palette,
     extract_color_palette_bytes,
+    extract_connected_warm_coverage,
     extract_palette_coverage,
     extract_white_fraction,
     normalize_palette_brightness,
@@ -292,11 +293,12 @@ class ChameleonLight(LightEntity):
 
     def _prepare_palette(
         self, colors: list[RGBColor], white_fraction: float = 0.0, coverage: list[float] | None = None,
+        connected_coverage: list[float] | None = None,
     ) -> list[RGBColor]:
         """Adjust source-image RGB values before static or animated output."""
         source = colors
         if self._interesting_colors:
-            colors = select_interesting_colors(colors, white_fraction, coverage)
+            colors = select_interesting_colors(colors, white_fraction, coverage, connected_coverage)
         if self._coverage_based_assignment and not (self._interesting_colors and white_fraction >= 0.7):
             colors = distribute_palette_by_coverage(colors, source, coverage, len(self._light_entities))
         if self._interesting_colors:
@@ -818,17 +820,18 @@ class ChameleonLight(LightEntity):
                 image_bytes,
                 color_count=max(len(self._light_entities), DEFAULT_COLOR_COUNT),
             )
-            white_fraction, coverage = await asyncio.gather(
+            white_fraction, coverage, connected_coverage = await asyncio.gather(
                 extract_white_fraction(self.hass, image_bytes),
                 extract_palette_coverage(self.hass, image_bytes, colors),
-            ) if self._interesting_colors or self._coverage_based_assignment else (0.0, None)
+                extract_connected_warm_coverage(self.hass, image_bytes, colors),
+            ) if self._interesting_colors or self._coverage_based_assignment else (0.0, None, None)
         finally:
             # Only palette/white-coverage data is needed for device updates.
             del image_bytes
         if not colors and white_fraction < 0.7:
             self._last_error = "Unable to extract colors from album artwork"
             return
-        colors = self._prepare_palette(colors, white_fraction, coverage)
+        colors = self._prepare_palette(colors, white_fraction, coverage, connected_coverage)
         if not colors:
             self._last_error = "No interesting colors found in album artwork"
             return
@@ -932,15 +935,16 @@ class ChameleonLight(LightEntity):
             image_path,
             color_count=max(num_lights, DEFAULT_COLOR_COUNT),
         )
-        white_fraction, coverage = await asyncio.gather(
+        white_fraction, coverage, connected_coverage = await asyncio.gather(
             extract_white_fraction(self.hass, image_path),
             extract_palette_coverage(self.hass, image_path, colors),
-        ) if self._interesting_colors or self._coverage_based_assignment else (0.0, None)
+            extract_connected_warm_coverage(self.hass, image_path, colors),
+        ) if self._interesting_colors or self._coverage_based_assignment else (0.0, None, None)
         if not colors and white_fraction < 0.7:
             _LOGGER.error("Failed to extract color palette from %s", image_path)
             return ApplyColorsResult()
 
-        colors = self._prepare_palette(colors, white_fraction, coverage)
+        colors = self._prepare_palette(colors, white_fraction, coverage, connected_coverage)
 
         if not colors:
             self._last_error = "No interesting colors found in image scene"

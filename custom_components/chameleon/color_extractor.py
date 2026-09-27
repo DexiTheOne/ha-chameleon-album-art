@@ -46,7 +46,7 @@ def _is_skin_tone(color: RGBColor) -> bool:
 
 
 def rank_palette_colors(
-    colors: list[RGBColor], white_fraction: float = 0.0, coverage: list[float] | None = None,
+    colors: list[RGBColor], white_fraction: float = 0.0, coverage: list[float] | None = None, connected_coverage: list[float] | None = None,
 ) -> list[tuple[RGBColor, int]]:
     """Score candidates by usefulness, then measured image coverage within tiers."""
     ranked = []
@@ -60,22 +60,33 @@ def rank_palette_colors(
         elif saturation <= 0.03:
             score = 10
         elif _is_skin_tone(color):
-            score = 30
+            # Only a large, genuinely warm connected region may override the
+            # normal skin penalty. Nearest-swatch area alone includes white.
+            patch = connected_coverage[index] if connected_coverage is not None and index < len(connected_coverage) else 0.0
+            area = coverage[index] if coverage is not None and index < len(coverage) else 0.0
+            score = 80 if (0.10 <= saturation <= 0.55 and value >= 0.60
+                           and math.isfinite(area) and area >= 0.60
+                           and math.isfinite(patch) and 0.30 <= patch <= area <= 1.0) else 30
         elif saturation >= 0.35 and value >= 0.25:
             score = 90
         else:
             # No brightness floor: genuinely dark hues remain useful candidates.
             score = 60
         covered = coverage[index] if coverage is not None and index < len(coverage) else 0.0
+        # Substantial visible hues can share the palette with saturated accents.
+        # Skin-like swatches stay penalized except for the spatial exception above.
+        if (score == 60 and not _is_skin_tone(color) and value >= 64 / 255
+                and saturation >= 0.10 and math.isfinite(covered) and 0.05 <= covered <= 1.0):
+            score = 75
         ranked.append((color, score, covered))
     return [(color, score) for color, score, _ in sorted(ranked, key=lambda item: (item[1], item[2]), reverse=True)]
 
 
 def select_interesting_colors(
-    colors: list[RGBColor], white_fraction: float = 0.0, coverage: list[float] | None = None,
+    colors: list[RGBColor], white_fraction: float = 0.0, coverage: list[float] | None = None, connected_coverage: list[float] | None = None,
 ) -> list[RGBColor]:
     """Use the strongest available tier, with low-ranked shades as fallbacks."""
-    ranked = rank_palette_colors(colors, white_fraction, coverage)
+    ranked = rank_palette_colors(colors, white_fraction, coverage, connected_coverage)
     if not ranked:
         return []
     cutoff = max(1, ranked[0][1] - 15)
@@ -198,6 +209,67 @@ async def extract_palette_coverage(hass: HomeAssistant, image_source: bytes | Pa
         return await hass.async_add_executor_job(_sync_palette_coverage, image_source, colors)
     except Exception as err:
         _LOGGER.warning("Unable to measure palette coverage: %s", type(err).__name__)
+        return [0.0] * len(colors)
+
+
+def _sync_connected_warm_coverage(image_source: bytes | Path, colors: list[RGBColor]) -> list[float]:
+    """Measure largest four-connected warm patch; exclude whites and shadows.
+
+    Each pixel must itself resemble the candidate hue and saturation, rather
+    than merely having that candidate as its nearest available palette color.
+    This is background evidence, not semantic face detection.
+    """
+    from PIL import Image
+
+    with ExitStack() as resources:
+        source = resources.enter_context(BytesIO(image_source)) if isinstance(image_source, bytes) else image_source
+        image = resources.enter_context(Image.open(source))
+        image.thumbnail((128, 128))
+        rgb = resources.enter_context(image.convert("RGB"))
+        width, height = rgb.size
+        pixels = [colorsys.rgb_to_hsv(*(v / 255 for v in pixel)) for pixel in rgb.getdata()]
+    result = []
+    for color in colors:
+        hue, saturation, value = colorsys.rgb_to_hsv(*(v / 255 for v in color))
+        if not _is_skin_tone(color) or not (0.10 <= saturation <= 0.55 and value >= 0.60):
+            result.append(0.0)
+            continue
+        mask = {i for i, (h, s, v) in enumerate(pixels)
+                if min(abs(h - hue), 1 - abs(h - hue)) <= 15 / 360
+                and 0.10 <= s <= 0.60 and abs(s - saturation) <= 0.15 and v >= 0.60}
+        largest = 0
+        while mask:
+            start = mask.pop()
+            stack = [start]
+            count = 0
+            while stack:
+                current = stack.pop()
+                count += 1
+                x, y = current % width, current // width
+                neighbors = []
+                if x:
+                    neighbors.append(current - 1)
+                if x + 1 < width:
+                    neighbors.append(current + 1)
+                if y:
+                    neighbors.append(current - width)
+                if y + 1 < height:
+                    neighbors.append(current + width)
+                for neighbor in neighbors:
+                    if neighbor in mask:
+                        mask.remove(neighbor)
+                        stack.append(neighbor)
+            largest = max(largest, count)
+        result.append(largest / len(pixels) if pixels else 0.0)
+    return result
+
+
+async def extract_connected_warm_coverage(hass: HomeAssistant, image_source: bytes | Path, colors: list[RGBColor]) -> list[float]:
+    """Fail closed: unavailable spatial evidence never relaxes skin ranking."""
+    try:
+        return await hass.async_add_executor_job(_sync_connected_warm_coverage, image_source, colors)
+    except Exception as err:
+        _LOGGER.warning("Unable to measure warm connected coverage: %s", type(err).__name__)
         return [0.0] * len(colors)
 
 

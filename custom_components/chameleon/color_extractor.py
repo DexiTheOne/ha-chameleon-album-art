@@ -160,22 +160,23 @@ async def extract_palette_coverage(hass: HomeAssistant, image_source: bytes | Pa
 
 
 def normalize_palette_brightness(colors: list[RGBColor]) -> list[RGBColor]:
-    """Make extracted colors bright and colorful without changing their hue.
+    """Lift near-black colors to a modest level without increasing saturation.
 
-    HSV value equalizes RGB output level; a saturation floor keeps muted image
-    swatches colorful on LEDs. Neutral or black colors have no reliable
-    hue, so they become white rather than an arbitrary saturated color.
+    Brighter swatches retain their original RGB levels. A 35% HSV value floor
+    makes dark artwork visible while keeping shadows distinct from highlights.
+    Small channel differences in muted grays are quantization/tint noise, not
+    reliable hues; suppress those without bleaching truly chromatic dark colors.
     """
     result: list[RGBColor] = []
     for color in colors:
         r, g, b = clamp_rgb_color(color)
         h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
-        # Quantization/compression can give gray tiny unequal channels.
-        # Those near-neutral swatches have no stable hue to amplify.
-        if v == 0 or s <= 0.03:
-            result.append((255, 255, 255))
+        target_value = max(v, 0.35)
+        if s <= 0.03 or (max(r, g, b) - min(r, g, b) <= 8 and s <= 0.25):
+            level = round(target_value * 255)
+            result.append((level, level, level))
             continue
-        bright_r, bright_g, bright_b = colorsys.hsv_to_rgb(h, max(s, 0.65), 1.0)
+        bright_r, bright_g, bright_b = colorsys.hsv_to_rgb(h, s, target_value)
         result.append((round(bright_r * 255), round(bright_g * 255), round(bright_b * 255)))
     return result
 

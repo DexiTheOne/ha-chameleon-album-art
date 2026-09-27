@@ -55,6 +55,7 @@ from .color_extractor import (
     RGBColor,
     balance_mostly_white_palette,
     clamp_rgb_color,
+    distribute_palette_by_coverage,
     extract_color_palette,
     extract_color_palette_bytes,
     extract_palette_coverage,
@@ -287,7 +288,10 @@ class ChameleonLight(LightEntity):
     ) -> list[RGBColor]:
         """Adjust source-image RGB values before static or animated output."""
         if self._interesting_colors:
+            source = colors
             colors = select_interesting_colors(colors, white_fraction, coverage)
+            if white_fraction < 0.7:
+                colors = distribute_palette_by_coverage(colors, source, coverage, len(self._light_entities))
             colors = balance_mostly_white_palette(colors, white_fraction, len(self._light_entities))
         if self._normalize_brightness:
             return normalize_palette_brightness(colors)

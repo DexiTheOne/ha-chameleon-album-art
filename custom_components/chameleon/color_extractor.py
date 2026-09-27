@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import colorsys
 import logging
+import math
 from contextlib import ExitStack
 from io import BytesIO
 from pathlib import Path
@@ -88,7 +89,11 @@ def select_interesting_colors(
         for color in selected
     )
     if white_fraction < 0.7 and visible_chromatic:
-        selected = [color for color in selected if max(color) >= 64]
+        measured = {color: sum(
+            coverage[index] for index, candidate in enumerate(colors)
+            if candidate == color and index < len(coverage)
+        ) for color in selected} if coverage is not None else {}
+        selected = [color for color in selected if max(color) >= 64 or measured.get(color, 0.0) >= 0.15]
     if white_fraction >= 0.7:
         # Mostly white covers can still carry a genuine dark/color accent.
         # Skin/gray swatches only become accents when there is no better hue.
@@ -97,6 +102,33 @@ def select_interesting_colors(
             accent_cutoff = accents[0][1] - 15
             selected.extend(color for color, score in accents if score >= accent_cutoff and color not in selected)
     return selected
+
+
+def distribute_palette_by_coverage(
+    selected: list[RGBColor], source: list[RGBColor], coverage: list[float] | None,
+    light_count: int,
+) -> list[RGBColor]:
+    """Allocate whole light slots proportionally using largest remainders.
+
+    Do not guarantee a slot to every small detail. Missing or invalid coverage
+    retains the existing palette instead of inventing area measurements.
+    """
+    if not selected or light_count < 1 or coverage is None or len(coverage) != len(source):
+        return selected
+    if any(not math.isfinite(value) or value < 0 for value in coverage):
+        return selected
+    unique = list(dict.fromkeys(selected))
+    weights = [sum(area for color, area in zip(source, coverage, strict=True) if color == candidate)
+               for candidate in unique]
+    total = sum(weights)
+    if total <= 0:
+        return selected
+    quotas = [light_count * weight / total for weight in weights]
+    counts = [int(quota) for quota in quotas]
+    remainder_order = sorted(range(len(unique)), key=lambda index: quotas[index] - counts[index], reverse=True)
+    for index in remainder_order[:light_count - sum(counts)]:
+        counts[index] += 1
+    return [color for color, count in zip(unique, counts, strict=True) for _ in range(count)]
 
 
 def balance_mostly_white_palette(colors: list[RGBColor], white_fraction: float, light_count: int) -> list[RGBColor]:

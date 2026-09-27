@@ -13,6 +13,7 @@ from custom_components.chameleon.color_extractor import (
     _sync_white_fraction,
     balance_mostly_white_palette,
     clamp_rgb_color,
+    distribute_palette_by_coverage,
     extract_color_palette_bytes,
     generate_gradient_path,
     normalize_palette_brightness,
@@ -398,3 +399,37 @@ def test_dark_only_artwork_keeps_its_colors_and_brightness_boost():
 
 def test_bright_neutral_alone_does_not_remove_genuine_dark_accent():
     assert select_interesting_colors([(13, 27, 20), (230, 230, 230)]) == [(13, 27, 20), (230, 230, 230)]
+
+
+def test_short_n_sweet_assigns_more_lights_to_large_patches():
+    blue, brown, red = (44, 81, 151), (89, 49, 30), (164, 60, 36)
+    assert distribute_palette_by_coverage([blue, brown, red], [blue, brown, red],
+                                          [0.46655, 0.22198, 0.05975], 7) == [blue] * 4 + [brown] * 2 + [red]
+
+
+def test_tiny_detail_is_not_guaranteed_a_light():
+    blue, red = (40, 80, 160), (160, 40, 40)
+    assert distribute_palette_by_coverage([blue, red], [blue, red], [0.99, 0.01], 7) == [blue] * 7
+    assert distribute_palette_by_coverage([red, blue], [red, blue], [0.01, 0.99], 1) == [blue]
+
+
+def test_prom_keeps_substantial_dark_green_background():
+    dark, green, pale, blue = (31, 40, 36), (82, 111, 85), (154, 170, 155), (135, 149, 161)
+    source = [dark, green, pale, blue]
+    coverage = [0.40460, 0.14648, 0.08276, 0.04114]
+    selected = select_interesting_colors(source, coverage=coverage)
+    assert dark in selected
+    allocated = distribute_palette_by_coverage(selected, source, coverage, 7)
+    assert allocated.count(dark) == 4
+    assert len(allocated) == 7
+
+
+@pytest.mark.parametrize("coverage", [None, [], [0, 0], [-1, 1], [float("nan"), 1], [float("inf"), 1]])
+def test_unavailable_or_invalid_coverage_retains_palette(coverage):
+    source = [(40, 80, 160), (160, 40, 40)]
+    assert distribute_palette_by_coverage(source, source, coverage, 7) == source
+
+
+def test_duplicate_source_swatches_combine_coverage_without_duplicate_quota():
+    blue, red = (40, 80, 160), (160, 40, 40)
+    assert distribute_palette_by_coverage([blue, blue, red], [blue, blue, red], [0.4, 0.4, 0.2], 5) == [blue] * 4 + [red]

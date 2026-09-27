@@ -79,6 +79,16 @@ def select_interesting_colors(
         return []
     cutoff = max(1, ranked[0][1] - 15)
     selected = [color for color, score in ranked if score >= cutoff]
+    # Do not promote near-black shadows to bright accents when the same tier
+    # already supplies visible chromatic colors. Dark-only artwork still keeps
+    # its colors, and white-heavy artwork retains its explicit dark accents.
+    visible_chromatic = any(
+        max(color) >= 64 and (max(color) - min(color)) / max(color) >= 0.10
+        and not _is_bright_neutral(color)
+        for color in selected
+    )
+    if white_fraction < 0.7 and visible_chromatic:
+        selected = [color for color in selected if max(color) >= 64]
     if white_fraction >= 0.7:
         # Mostly white covers can still carry a genuine dark/color accent.
         # Skin/gray swatches only become accents when there is no better hue.

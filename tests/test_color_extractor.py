@@ -247,7 +247,7 @@ def test_interesting_colors_ranks_muted_dark_hues_above_skin_tones():
     """All non-black shades remain available, including muted and repeated hues."""
     colors = [(201, 228, 244), (23, 25, 27), (231, 161, 147),
               (119, 90, 84), (234, 173, 157), (156, 122, 110), (121, 135, 143)]
-    assert select_interesting_colors(colors) == [colors[0], colors[1], colors[6]]
+    assert select_interesting_colors(colors) == [colors[0], colors[6]]
     bright = normalize_palette_brightness(select_interesting_colors(colors))
     assert bright[0][2] == 244 and bright[0][0] < bright[0][2]
 
@@ -379,3 +379,22 @@ def test_sample_dark_blue_is_brightened_without_saturation_boost():
 def test_bright_swatches_remain_unchanged():
     source = [(221, 219, 231), (240, 150, 20), (255, 200, 0)]
     assert normalize_palette_brightness(source) == source
+
+
+def test_commodores_sky_outweighs_near_black_logo_shadow():
+    colors = [(133, 148, 197), (43, 22, 23), (221, 219, 231),
+              (79, 52, 50), (108, 88, 79), (137, 125, 122), (194, 205, 229)]
+    selected = select_interesting_colors(colors)
+    assert selected == [colors[0], colors[6], colors[2]]
+    assert normalize_palette_brightness(selected) == [(138, 153, 204), (194, 205, 229), (221, 219, 231)]
+
+
+def test_dark_only_artwork_keeps_its_colors_and_brightness_boost():
+    source = [(13, 27, 20), (3, 5, 12)]
+    assert select_interesting_colors(source) == source
+    assert select_interesting_colors([(38, 49, 64)]) == [(38, 49, 64)]
+    assert normalize_palette_brightness([(38, 49, 64)]) == [(121, 156, 204)]
+
+
+def test_bright_neutral_alone_does_not_remove_genuine_dark_accent():
+    assert select_interesting_colors([(13, 27, 20), (230, 230, 230)]) == [(13, 27, 20), (230, 230, 230)]

@@ -29,27 +29,27 @@ def test_normalize_palette_clamps_rgb_channels():
 
 def test_gentle_normalization_preserves_bright_and_muted_swatches():
     assert normalize_palette_brightness([(32, 4, 4), (40, 80, 120), (180, 170, 160), (255, 200, 0)]) == [
-        (89, 11, 11), (40, 80, 120), (180, 170, 160), (255, 200, 0),
+        (204, 26, 26), (68, 136, 204), (204, 193, 181), (255, 200, 0),
     ]
 
 
 def test_gray_cover_clouds_and_logo_shadows_are_not_exaggerated():
     assert normalize_palette_brightness([(17, 20, 22), (140, 132, 136), (132, 132, 140), (68, 76, 76)]) == [
-        (89, 89, 89), (140, 140, 140), (140, 140, 140), (89, 89, 89),
+        (204, 204, 204), (204, 204, 204), (204, 204, 204), (204, 204, 204),
     ]
-    assert normalize_palette_brightness([(221, 219, 231), (43, 22, 23)]) == [(221, 219, 231), (89, 46, 48)]
+    assert normalize_palette_brightness([(221, 219, 231), (43, 22, 23)]) == [(221, 219, 231), (204, 104, 109)]
 
 
 def test_gentle_neutral_floor_and_visible_gradient():
-    assert normalize_palette_brightness([(0, 0, 0), (50, 50, 50)]) == [(89, 89, 89)] * 2
+    assert normalize_palette_brightness([(0, 0, 0), (50, 50, 50)]) == [(204, 204, 204)] * 2
     gradient = generate_gradient_path([(255, 0, 0), (0, 255, 0)], steps_between=10)
-    assert normalize_palette_brightness(gradient) == gradient
+    assert all(max(c) >= 204 for c in normalize_palette_brightness(gradient))
 
 
 @pytest.mark.parametrize("color", [(13, 27, 20), (1, 0, 0), (20, 30, 55)])
 def test_dark_chromatic_saturation_is_preserved(color):
     result = normalize_palette_brightness([color])[0]
-    assert max(result) == 89
+    assert max(result) == 204
     assert rgb_to_hs(result)[0] == pytest.approx(rgb_to_hs(color)[0], abs=1)
     assert rgb_to_hs(result)[1] == pytest.approx(rgb_to_hs(color)[1], abs=1)
 
@@ -207,7 +207,7 @@ def test_dark_green_normalization_preserves_hue():
     colors = [(0, 1, 0), (3, 12, 5), (13, 27, 20)]
     normalized = normalize_palette_brightness(select_interesting_colors(colors))
     for source, result in zip(colors, normalized, strict=True):
-        assert max(result) == 89
+        assert max(result) == 204
         assert result[1] > result[0] and result[1] > result[2]
         assert rgb_to_hs(result)[0] == pytest.approx(rgb_to_hs(source)[0], abs=1)
 
@@ -281,13 +281,13 @@ def test_tigallerro_dark_green_palette_is_accepted_and_brightened():
     """The observed dominant background keeps its 150-degree green hue."""
     source = [(13, 27, 20)]
     assert select_interesting_colors(source) == source
-    assert normalize_palette_brightness(select_interesting_colors(source)) == [(43, 89, 66)]
+    assert normalize_palette_brightness(select_interesting_colors(source)) == [(98, 204, 151)]
 
 
 def test_normalization_does_not_invent_hues_from_neutral_quantization_noise():
     source = [(116, 115, 116), (116, 116, 115), (115, 116, 116), (218, 218, 218)]
-    assert normalize_palette_brightness(source) == [(116, 116, 116)] * 3 + [(218, 218, 218)]
-    assert normalize_palette_brightness([(13, 27, 20), (1, 0, 0)]) == [(43, 89, 66), (89, 0, 0)]
+    assert normalize_palette_brightness(source) == [(204, 204, 204)] * 3 + [(218, 218, 218)]
+    assert normalize_palette_brightness([(13, 27, 20), (1, 0, 0)]) == [(98, 204, 151), (204, 0, 0)]
 
 
 def test_black_white_artwork_quantized_palette_retains_neutral_levels():
@@ -365,3 +365,17 @@ def test_coverage_cannot_promote_skin_over_real_dark_hues():
 def test_equal_rank_and_coverage_retains_original_order():
     first, second = (240, 20, 50), (20, 100, 240)
     assert select_interesting_colors([first, second], coverage=[0.5, 0.5]) == [first, second]
+
+
+def test_sample_dark_blue_is_brightened_without_saturation_boost():
+    assert normalize_palette_brightness([(38, 49, 64)]) == [(121, 156, 204)]
+    source = (133, 148, 197)
+    result = normalize_palette_brightness([source])[0]
+    assert result == (138, 153, 204)
+    assert rgb_to_hs(result)[0] == pytest.approx(rgb_to_hs(source)[0], abs=1)
+    assert rgb_to_hs(result)[1] == pytest.approx(rgb_to_hs(source)[1], abs=1)
+
+
+def test_bright_swatches_remain_unchanged():
+    source = [(221, 219, 231), (240, 150, 20), (255, 200, 0)]
+    assert normalize_palette_brightness(source) == source

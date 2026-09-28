@@ -45,6 +45,12 @@ def _is_skin_tone(color: RGBColor) -> bool:
     return r > g > b and hue <= 55 / 360 and 0.10 <= saturation <= 0.65 and value >= 0.20
 
 
+def _is_brown(color: RGBColor) -> bool:
+    """Dark warm swatches rarely reproduce as useful brown on RGB LEDs."""
+    hue, saturation, value = colorsys.rgb_to_hsv(*(channel / 255 for channel in color))
+    return 15 / 360 <= hue <= 55 / 360 and 0.10 <= saturation <= 0.85 and value <= 0.50
+
+
 def rank_palette_colors(
     colors: list[RGBColor], white_fraction: float = 0.0, coverage: list[float] | None = None, connected_coverage: list[float] | None = None,
 ) -> list[tuple[RGBColor, int]]:
@@ -52,11 +58,13 @@ def rank_palette_colors(
     ranked = []
     for index, color in enumerate(colors):
         color = clamp_rgb_color(color)
-        _, saturation, value = colorsys.rgb_to_hsv(*(channel / 255 for channel in color))
+        hue, saturation, value = colorsys.rgb_to_hsv(*(channel / 255 for channel in color))
         if value == 0:
             continue
         if _is_bright_neutral(color):
             score = 100 if white_fraction >= 0.7 else 50
+        elif _is_brown(color):
+            score = 5
         elif saturation <= 0.03:
             score = 10
         elif _is_skin_tone(color):
@@ -64,9 +72,14 @@ def rank_palette_colors(
             # normal skin penalty. Nearest-swatch area alone includes white.
             patch = connected_coverage[index] if connected_coverage is not None and index < len(connected_coverage) else 0.0
             area = coverage[index] if coverage is not None and index < len(coverage) else 0.0
-            score = 80 if (0.10 <= saturation <= 0.55 and value >= 0.60
-                           and math.isfinite(area) and area >= 0.60
-                           and math.isfinite(patch) and 0.30 <= patch <= area <= 1.0) else 30
+            broad_warm_background = (0.10 <= saturation <= 0.55 and value >= 0.60
+                                     and math.isfinite(area) and area >= 0.60
+                                     and math.isfinite(patch) and 0.30 <= patch <= area <= 1.0)
+            golden_background = (25 / 360 <= hue <= 55 / 360
+                                 and 0.55 < saturation <= 0.75 and value >= 0.50
+                                 and math.isfinite(area) and area >= 0.25
+                                 and math.isfinite(patch) and patch >= 0.20)
+            score = 80 if broad_warm_background or golden_background else 30
         elif saturation >= 0.35 and value >= 0.25:
             score = 90
         else:
@@ -231,12 +244,17 @@ def _sync_connected_warm_coverage(image_source: bytes | Path, colors: list[RGBCo
     result = []
     for color in colors:
         hue, saturation, value = colorsys.rgb_to_hsv(*(v / 255 for v in color))
-        if not _is_skin_tone(color) or not (0.10 <= saturation <= 0.55 and value >= 0.60):
+        golden_candidate = (25 / 360 <= hue <= 55 / 360 and 0.55 < saturation <= 0.75 and value >= 0.50)
+        regular_candidate = 0.10 <= saturation <= 0.55 and value >= 0.60
+        if not _is_skin_tone(color) or not (regular_candidate or golden_candidate):
             result.append(0.0)
             continue
+        lower_saturation, upper_saturation = (0.40, 0.80) if golden_candidate else (0.10, 0.60)
+        tolerance = 0.20 if golden_candidate else 0.15
+        minimum_value = 0.50 if golden_candidate else 0.60
         mask = {i for i, (h, s, v) in enumerate(pixels)
                 if min(abs(h - hue), 1 - abs(h - hue)) <= 15 / 360
-                and 0.10 <= s <= 0.60 and abs(s - saturation) <= 0.15 and v >= 0.60}
+                and lower_saturation <= s <= upper_saturation and abs(s - saturation) <= tolerance and v >= minimum_value}
         largest = 0
         while mask:
             start = mask.pop()
@@ -294,10 +312,11 @@ async def extract_average_color(hass: HomeAssistant, image_source: bytes | Path)
 
 
 def normalize_palette_brightness(colors: list[RGBColor]) -> list[RGBColor]:
-    """Brighten artwork colors without increasing saturation.
+    """Brighten artwork colors while retaining usable muted rose accents.
 
     Brighter swatches retain their original RGB levels. An 80% HSV value floor
-    makes dark artwork visible while retaining brighter highlights.
+    makes dark artwork visible while retaining brighter highlights. Muted rose
+    has a lower floor and bounded chroma lift so it remains visible on RGB LEDs.
     Small channel differences in muted grays are quantization/tint noise, not
     reliable hues; suppress those without bleaching truly chromatic dark colors.
     """
@@ -305,12 +324,15 @@ def normalize_palette_brightness(colors: list[RGBColor]) -> list[RGBColor]:
     for color in colors:
         r, g, b = clamp_rgb_color(color)
         h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
-        target_value = max(v, 0.80)
+        # Muted rose/mauve accents become nearly white at the general 80%
+        # floor. Preserve a lower value and enough chroma for RGB LEDs.
+        rose = (h >= 325 / 360 or h <= 15 / 360) and 0.10 <= s <= 0.30 and 0.35 <= v <= 0.80
+        target_value = max(v, 0.70 if rose else 0.80)
         if s <= 0.03 or (max(r, g, b) - min(r, g, b) <= 8 and s <= 0.25):
             level = round(target_value * 255)
             result.append((level, level, level))
             continue
-        bright_r, bright_g, bright_b = colorsys.hsv_to_rgb(h, s, target_value)
+        bright_r, bright_g, bright_b = colorsys.hsv_to_rgb(h, max(s, 0.28) if rose else s, target_value)
         result.append((round(bright_r * 255), round(bright_g * 255), round(bright_b * 255)))
     return result
 

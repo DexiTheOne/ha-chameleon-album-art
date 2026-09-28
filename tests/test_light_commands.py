@@ -558,7 +558,7 @@ def test_prepared_palette_assigns_slots_by_coverage_before_normalization(group):
     group._normalize_brightness = True
     source = [(44, 81, 151), (89, 49, 30), (164, 60, 36)]
     result = group._prepare_palette(source, 0.0, [0.46655, 0.22198, 0.05975])
-    assert result == [(59, 109, 204)] * 4 + [(204, 112, 69)] * 2 + [(204, 75, 45)]
+    assert result == [(59, 109, 204)] * 6 + [(204, 75, 45)]
     group._interesting_colors = False
     assert len(group._prepare_palette(source, 0.0, [0.46655, 0.22198, 0.05975])) == 7
     group.set_coverage_based_assignment(False)

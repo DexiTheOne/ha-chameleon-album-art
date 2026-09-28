@@ -47,6 +47,28 @@ def test_gentle_neutral_floor_and_visible_gradient():
     assert all(max(c) >= 204 for c in normalize_palette_brightness(gradient))
 
 
+def test_connected_golden_background_beats_dark_shadow_without_admitting_small_skin_patches():
+    colors = [(38, 34, 28), (207, 149, 79), (188, 124, 67)]
+    coverage = [0.61, 0.33, 0.06]
+    connected = [0.0, 0.29, 0.02]
+    selected = select_interesting_colors(colors, coverage=coverage, connected_coverage=connected)
+    assert selected == [(207, 149, 79)]
+    assert normalize_palette_brightness(distribute_palette_by_coverage(selected, colors, coverage, 7)) == [(207, 149, 79)] * 7
+    assert (38, 34, 28) not in select_interesting_colors(colors, coverage=coverage, connected_coverage=[0.0, 0.05, 0.02])
+
+
+def test_brown_ranks_below_neutral_and_colorful_hues():
+    from custom_components.chameleon.color_extractor import rank_palette_colors
+
+    ranked = rank_palette_colors([(38, 34, 28), (80, 80, 80), (80, 100, 88)])
+    assert ranked[-1] == ((38, 34, 28), 5)
+
+
+def test_muted_rose_keeps_led_visible_chroma_without_brightening_other_hues():
+    assert normalize_palette_brightness([(174, 149, 155)]) == [(178, 129, 141)]
+    assert normalize_palette_brightness([(141, 154, 167)]) == [(172, 188, 204)]
+
+
 @pytest.mark.parametrize("color", [(13, 27, 20), (1, 0, 0), (20, 30, 55)])
 def test_dark_chromatic_saturation_is_preserved(color):
     result = normalize_palette_brightness([color])[0]

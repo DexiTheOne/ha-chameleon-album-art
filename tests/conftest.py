@@ -210,6 +210,12 @@ def _setup_homeassistant_mocks():
     sys.modules["homeassistant.const"] = mock_ha_const
     sys.modules["homeassistant.components"] = mock_ha_components
     sys.modules["homeassistant.components.light"] = mock_ha_components_light
+    button_module = MagicMock()
+    button_module.ButtonEntity = SelectEntity
+    sys.modules["homeassistant.components.button"] = button_module
+    exceptions_module = MagicMock()
+    exceptions_module.HomeAssistantError = RuntimeError
+    sys.modules["homeassistant.exceptions"] = exceptions_module
     sys.modules["homeassistant.components.select"] = mock_ha_components_select
     sys.modules["homeassistant.components.switch"] = mock_ha_components_switch
     number_module = MagicMock()

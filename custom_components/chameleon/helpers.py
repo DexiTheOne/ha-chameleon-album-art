@@ -6,12 +6,25 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
+from .const import CONF_LIGHT_ENTITIES, CONF_LIGHT_ENTITY
+
 if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers import device_registry as dr
     from homeassistant.helpers import entity_registry as er
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def get_configured_lights(entry: ConfigEntry) -> list[str]:
+    """Read editable membership, falling back to the original setup data."""
+    if CONF_LIGHT_ENTITIES in entry.options:
+        return list(entry.options[CONF_LIGHT_ENTITIES])
+    if CONF_LIGHT_ENTITIES in entry.data:
+        return list(entry.data[CONF_LIGHT_ENTITIES])
+    legacy_light = entry.data.get(CONF_LIGHT_ENTITY)
+    return [legacy_light] if legacy_light else []
 
 
 def slugify(text: str) -> str:

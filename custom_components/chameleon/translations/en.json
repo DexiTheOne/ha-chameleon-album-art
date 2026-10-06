@@ -29,18 +29,24 @@
     "step": {
       "init": {
         "title": "Configure Chameleon",
-        "description": "Choose an optional album-art source and how extracted colors appear on LEDs.",
+        "description": "Choose the lights to control, an optional album-art source, and how extracted colors appear on LEDs.",
         "data": {
           "media_player_entity": "Album Art Media Player",
           "normalize_brightness": "Normalize Brightness",
-          "send_palette_to_wled": "Send Palette to WLED"
+          "send_palette_to_wled": "Send Palette to WLED",
+          "light_entities": "Lights"
         },
         "data_description": {
           "media_player_entity": "Artwork changes update the configured Chameleon lights only while the Album Art effect is active.",
           "normalize_brightness": "Change extracted RGB values to bright, vibrant colors with a similar output level. The Home Assistant brightness slider is unchanged.",
-          "send_palette_to_wled": "Send three scene colors to each enabled WLED segment. When off, only its primary color is updated."
+          "send_palette_to_wled": "Send three scene colors to each enabled WLED segment. When off, only its primary color is updated.",
+          "light_entities": "Select at least one light. Retained lights keep their order and new lights are appended. Saving reloads Chameleon; select a scene afterward to apply it to the updated group."
         }
       }
+    },
+    "error": {
+      "no_lights": "Select at least one light.",
+      "invalid_light": "Select physical lights, not Chameleon groups."
     }
   },
   "entity": {

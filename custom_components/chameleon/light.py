@@ -68,8 +68,6 @@ from .color_extractor import (
 from .const import (
     CONF_COVERAGE_BASED_ASSIGNMENT,
     CONF_INTERESTING_COLORS,
-    CONF_LIGHT_ENTITIES,
-    CONF_LIGHT_ENTITY,
     CONF_MEDIA_PLAYER_ENTITY,
     CONF_NORMALIZE_BRIGHTNESS,
     CONF_RANDOMIZE_COLOR_ASSIGNMENT,
@@ -95,7 +93,7 @@ from .const import (
     WLED_BLEND_STYLES,
 )
 from .entity_controls import controlled_entities, settings
-from .helpers import get_chameleon_device_name, get_entity_base_name
+from .helpers import get_chameleon_device_name, get_configured_lights, get_entity_base_name
 from .light_controller import ApplyColorsResult, LightController, LightResult
 from .wled_palette import send_wled_power_off, send_wled_transition, wled_entry_id
 
@@ -149,10 +147,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Chameleon light entity from a config entry."""
-    if CONF_LIGHT_ENTITIES in entry.data:
-        light_entities = entry.data[CONF_LIGHT_ENTITIES]
-    else:
-        light_entities = [entry.data[CONF_LIGHT_ENTITY]]
+    light_entities = get_configured_lights(entry)
 
     initial_transition = entry.options.get(CONF_TRANSITION, entry.data.get(CONF_TRANSITION, DEFAULT_TRANSITION))
     media_player_entity = entry.options.get(

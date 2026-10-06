@@ -232,3 +232,103 @@ async def test_configure_preserves_average_switch():
     result = await flow.async_step_init({CONF_NORMALIZE_BRIGHTNESS: True})
     assert result["data"]["use_averaged_color"] is True
     assert result["data"]["interesting_colors"] is True
+
+
+@pytest.mark.asyncio
+async def test_membership_retains_order_identity_and_unrelated_options():
+    from custom_components.chameleon.config_flow import ChameleonOptionsFlow
+    from custom_components.chameleon.helpers import get_configured_lights
+
+    flow = ChameleonOptionsFlow()
+    flow.hass = MagicMock()
+    entry = MagicMock(
+        entry_id="existing-entry", unique_id="original-identity", title="Existing group",
+        data={CONF_LIGHT_ENTITIES: ["light.a", "light.b"], "transition": 2.5},
+        options={"light_entity_controls": {"light.a": {"brightness": 60}}, "custom_option": "kept"},
+    )
+    flow.config_entry = entry
+    original_data = dict(entry.data)
+    result = await flow.async_step_init({CONF_LIGHT_ENTITIES: ["light.b", "light.new", "light.a", "light.new"]})
+    assert result["data"][CONF_LIGHT_ENTITIES] == ["light.a", "light.b", "light.new"]
+    assert result["data"]["light_entity_controls"] == entry.options["light_entity_controls"]
+    assert result["data"]["custom_option"] == "kept"
+    assert entry.data == original_data
+    assert entry.entry_id == "existing-entry"
+    assert entry.unique_id == "original-identity"
+    assert entry.title == "Existing group"
+    entry.options = result["data"]
+    assert get_configured_lights(entry) == ["light.a", "light.b", "light.new"]
+    flow.hass.config_entries.async_update_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_membership_removal_and_unrelated_save():
+    from custom_components.chameleon.config_flow import ChameleonOptionsFlow
+    flow = ChameleonOptionsFlow()
+    flow.hass = MagicMock()
+    flow.config_entry = MagicMock(data={CONF_LIGHT_ENTITIES: ["light.original"]}, options={CONF_LIGHT_ENTITIES: ["light.a", "light.b"]})
+    result = await flow.async_step_init({CONF_LIGHT_ENTITIES: ["light.b"]})
+    assert result["data"][CONF_LIGHT_ENTITIES] == ["light.b"]
+    flow.config_entry.options = result["data"]
+    result = await flow.async_step_init({CONF_NORMALIZE_BRIGHTNESS: True})
+    assert result["data"][CONF_LIGHT_ENTITIES] == ["light.b"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("selected,error", [([], "no_lights"), (["switch.a"], "invalid_light"), (None, "no_lights")])
+async def test_invalid_membership_does_not_save(selected, error):
+    from custom_components.chameleon.config_flow import ChameleonOptionsFlow
+    flow = ChameleonOptionsFlow()
+    flow.hass = MagicMock()
+    flow.config_entry = MagicMock(data={CONF_LIGHT_ENTITIES: ["light.a"]}, options={})
+    result = await flow.async_step_init({CONF_LIGHT_ENTITIES: selected})
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"] == {CONF_LIGHT_ENTITIES: error}
+    assert flow.config_entry.options == {}
+
+
+@pytest.mark.asyncio
+async def test_chameleon_group_cannot_be_a_member():
+    from unittest.mock import patch
+    from custom_components.chameleon.config_flow import ChameleonOptionsFlow
+    flow = ChameleonOptionsFlow()
+    flow.hass = MagicMock()
+    flow.config_entry = MagicMock(data={CONF_LIGHT_ENTITIES: ["light.a"]}, options={})
+    with patch("custom_components.chameleon.config_flow.er.async_get") as registry:
+        registry.return_value.async_get.return_value = MagicMock(platform="chameleon")
+        result = await flow.async_step_init({CONF_LIGHT_ENTITIES: ["light.chameleon_other"]})
+    assert result["errors"] == {CONF_LIGHT_ENTITIES: "invalid_light"}
+
+
+def test_membership_falls_back_to_setup_and_legacy_data():
+    from custom_components.chameleon.helpers import get_configured_lights
+    assert get_configured_lights(MagicMock(options={}, data={CONF_LIGHT_ENTITIES: ["light.b", "light.a"]})) == ["light.b", "light.a"]
+    assert get_configured_lights(MagicMock(options={}, data={"light_entity": "light.legacy"})) == ["light.legacy"]
+
+
+@pytest.mark.asyncio
+async def test_membership_form_uses_current_options():
+    from custom_components.chameleon.config_flow import ChameleonOptionsFlow
+    flow = ChameleonOptionsFlow()
+    flow.config_entry = MagicMock(data={CONF_LIGHT_ENTITIES: ["light.old"]}, options={CONF_LIGHT_ENTITIES: ["light.new"]})
+    result = await flow.async_step_init()
+    membership = next(key for key in result["data_schema"].schema if key.schema == CONF_LIGHT_ENTITIES)
+    assert membership.default() == ["light.new"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform,constructor", [
+    ("light", "ChameleonLight"),
+    ("number", "ChameleonTransitionNumber"),
+    ("select", "ChameleonSceneSelect"),
+    ("switch", "ChameleonRandomizeColorAssignmentSwitch"),
+    ("button", "ChameleonRandomSceneButton"),
+])
+async def test_all_platforms_use_edited_membership(platform, constructor):
+    import importlib
+    from unittest.mock import patch
+    module = importlib.import_module(f"custom_components.chameleon.{platform}")
+    entry = MagicMock(data={CONF_LIGHT_ENTITIES: ["light.old"]}, options={CONF_LIGHT_ENTITIES: ["light.new"]})
+    with patch.object(module, constructor) as entity_class, patch.object(module, "get_entity_base_name", return_value="test", create=True):
+        await module.async_setup_entry(MagicMock(), entry, MagicMock())
+    assert entity_class.call_args.args[2] == ["light.new"]

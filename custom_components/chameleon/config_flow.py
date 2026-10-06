@@ -7,6 +7,7 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlowWithReload
 from homeassistant.core import callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.selector import (
     BooleanSelector,
     EntitySelector,
@@ -39,7 +40,7 @@ from .const import (
     MIN_TRANSITION,
 )
 from .entity_controls import OPTIONS_KEY
-from .helpers import get_entry_title
+from .helpers import get_configured_lights, get_entry_title
 
 
 class ChameleonConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -106,10 +107,31 @@ class ChameleonOptionsFlow(OptionsFlowWithReload):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage Chameleon options."""
-        if user_input is not None:
+        errors: dict[str, str] = {}
+        current_lights = get_configured_lights(self.config_entry)
+        if user_input is not None and CONF_LIGHT_ENTITIES in user_input:
+            selected = user_input[CONF_LIGHT_ENTITIES]
+            registry = er.async_get(self.hass)
+            if not isinstance(selected, list) or not selected:
+                errors[CONF_LIGHT_ENTITIES] = "no_lights"
+            elif any(
+                not isinstance(entity_id, str)
+                or not entity_id.startswith("light.")
+                or ((entity := registry.async_get(entity_id)) is not None and entity.platform == DOMAIN)
+                for entity_id in selected
+            ):
+                errors[CONF_LIGHT_ENTITIES] = "invalid_light"
+            else:
+                # Keep retained members in their current order; append additions.
+                selected_set = set(selected)
+                ordered = [entity_id for entity_id in current_lights if entity_id in selected_set]
+                ordered.extend(entity_id for entity_id in dict.fromkeys(selected) if entity_id not in ordered)
+                user_input = {**user_input, CONF_LIGHT_ENTITIES: ordered}
+
+        if user_input is not None and not errors:
             # The assignment switch owns this option. Keep it when the user
             # changes media-player or brightness settings through this flow.
-            options = dict(user_input)
+            options = {**self.config_entry.options, **user_input}
             options[CONF_USE_AVERAGED_COLOR] = self.config_entry.options.get(
                 CONF_USE_AVERAGED_COLOR,
                 self.config_entry.data.get(CONF_USE_AVERAGED_COLOR, DEFAULT_USE_AVERAGED_COLOR),
@@ -151,6 +173,9 @@ class ChameleonOptionsFlow(OptionsFlowWithReload):
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
+                vol.Required(CONF_LIGHT_ENTITIES, default=current_lights): EntitySelector(
+                    EntitySelectorConfig(domain="light", multiple=True)
+                ),
                 schema_key: EntitySelector(EntitySelectorConfig(domain="media_player")),
                 vol.Required(CONF_NORMALIZE_BRIGHTNESS, default=normalize_brightness): BooleanSelector(),
                 vol.Required(CONF_SEND_PALETTE_TO_WLED, default=self.config_entry.options.get(
@@ -158,4 +183,5 @@ class ChameleonOptionsFlow(OptionsFlowWithReload):
                     self.config_entry.data.get(CONF_SEND_PALETTE_TO_WLED, DEFAULT_SEND_PALETTE_TO_WLED),
                 )): BooleanSelector(),
             }),
+            errors=errors,
         )

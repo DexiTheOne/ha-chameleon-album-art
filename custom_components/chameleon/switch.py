@@ -10,8 +10,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import (
     CONF_COVERAGE_BASED_ASSIGNMENT,
     CONF_INTERESTING_COLORS,
-    CONF_LIGHT_ENTITIES,
-    CONF_LIGHT_ENTITY,
     CONF_RANDOMIZE_COLOR_ASSIGNMENT,
     CONF_USE_AVERAGED_COLOR,
     DEFAULT_COVERAGE_BASED_ASSIGNMENT,
@@ -21,7 +19,7 @@ from .const import (
     DOMAIN,
 )
 from .entity_controls import LightEntitySwitch, controlled_entities
-from .helpers import get_chameleon_device_name, get_entity_base_name
+from .helpers import get_chameleon_device_name, get_configured_lights, get_entity_base_name
 
 
 async def async_setup_entry(
@@ -30,7 +28,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Add control switches to the existing Chameleon device."""
-    light_entities = entry.data.get(CONF_LIGHT_ENTITIES) or [entry.data[CONF_LIGHT_ENTITY]]
+    light_entities = get_configured_lights(entry)
     async_add_entities([
         *[LightEntitySwitch(hass, entry, entity, "enabled") for entity in controlled_entities(hass, light_entities)],
         ChameleonRandomizeColorAssignmentSwitch(hass, entry, light_entities),

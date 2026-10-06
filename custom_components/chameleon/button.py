@@ -2,14 +2,13 @@
 
 from homeassistant.components.button import ButtonEntity
 
-from .const import CONF_LIGHT_ENTITIES, CONF_LIGHT_ENTITY, SCENE_ALBUM_ART, SCENE_RANDOM
+from .const import SCENE_ALBUM_ART, SCENE_RANDOM
+from .helpers import get_configured_lights
 from .scene_control import ChameleonSceneControl
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    light_entities = entry.data.get(CONF_LIGHT_ENTITIES)
-    if light_entities is None:
-        light_entities = [entry.data[CONF_LIGHT_ENTITY]]
+    light_entities = get_configured_lights(entry)
     async_add_entities([ChameleonRandomSceneButton(hass, entry, light_entities)])
 
 

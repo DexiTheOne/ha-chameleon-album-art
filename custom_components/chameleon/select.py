@@ -10,14 +10,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
-    CONF_LIGHT_ENTITIES,
-    CONF_LIGHT_ENTITY,
     CONF_WLED_BLEND_STYLE,
     DEFAULT_WLED_BLEND_STYLE,
     DOMAIN,
     WLED_BLEND_STYLE_OPTIONS,
 )
-from .helpers import get_chameleon_device_name, get_entity_base_name
+from .helpers import get_chameleon_device_name, get_configured_lights, get_entity_base_name
 from .scene_control import ChameleonSceneControl
 
 _LOGGER = logging.getLogger(__name__)
@@ -29,10 +27,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Chameleon scene and transition style selects."""
-    if CONF_LIGHT_ENTITIES in entry.data:
-        light_entities = entry.data[CONF_LIGHT_ENTITIES]
-    else:
-        light_entities = [entry.data[CONF_LIGHT_ENTITY]]
+    light_entities = get_configured_lights(entry)
 
     async_add_entities(
         [ChameleonSceneSelect(hass, entry, light_entities), ChameleonWledBlendSelect(hass, entry, light_entities)],

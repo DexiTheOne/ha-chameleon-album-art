@@ -10,8 +10,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
-    CONF_LIGHT_ENTITIES,
-    CONF_LIGHT_ENTITY,
     CONF_TRANSITION,
     DEFAULT_TRANSITION,
     DOMAIN,
@@ -19,7 +17,7 @@ from .const import (
     MIN_TRANSITION,
 )
 from .entity_controls import LightEntityBrightness, controlled_entities
-from .helpers import get_chameleon_device_name, get_entity_base_name
+from .helpers import get_chameleon_device_name, get_configured_lights, get_entity_base_name
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,10 +28,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Chameleon transition number entity from a config entry."""
-    if CONF_LIGHT_ENTITIES in entry.data:
-        light_entities = entry.data[CONF_LIGHT_ENTITIES]
-    else:
-        light_entities = [entry.data[CONF_LIGHT_ENTITY]]
+    light_entities = get_configured_lights(entry)
 
     initial_transition = entry.options.get(CONF_TRANSITION, entry.data.get(CONF_TRANSITION, DEFAULT_TRANSITION))
 
